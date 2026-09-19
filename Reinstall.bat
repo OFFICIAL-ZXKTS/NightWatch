@@ -1,5 +1,5 @@
 @echo off
-title SlumberGuard Reinstaller
+title SleepSafe Reinstaller
 cd /d "%~dp0"
 
 :: Check for Administrator privileges and self-elevate if needed
@@ -11,7 +11,7 @@ if %errorlevel% neq 0 (
 )
 
 echo ======================================================
-echo       SlumberGuard - Performing Fresh Reinstall
+echo       SleepSafe - Performing Fresh Reinstall
 echo ======================================================
 echo.
 

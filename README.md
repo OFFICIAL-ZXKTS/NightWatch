@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ SlumberGuard
+# 🛡️ SleepSafe
 
 ### *Smart Study-Break & Battery-Preserving Idle Sentinel for Windows 11*
 
@@ -22,7 +22,7 @@
 
 ## ⚡ The Big Idea: A "Dead Man's Switch" for Late-Night Studying
 
-Think of **SlumberGuard** as an intelligent safety switch for your laptop:
+Think of **SleepSafe** as an intelligent safety switch for your laptop:
 
 | Your Action | Laptop's Interpretation | What Happens |
 | :--- | :--- | :--- |
@@ -31,13 +31,13 @@ Think of **SlumberGuard** as an intelligent safety switch for your laptop:
 
 ---
 
-## 🎯 The Problem SlumberGuard Solves
+## 🎯 The Problem SleepSafe Solves
 
 When working late on your PC, you face a dilemma:
 1. **If you step away for a break**: You want your computer to stay on and active without Windows auto-shutting down your 20 research tabs, background tasks, or unsaved work.
 2. **If you accidentally fall asleep**: You don't want your laptop/PC burning all night on your bed or desk, draining battery cycles, overheating, and wearing out hardware.
 
-**SlumberGuard gives you the best of both worlds with zero friction.**
+**SleepSafe gives you the best of both worlds with zero friction.**
 
 ```mermaid
 graph TD
@@ -57,9 +57,9 @@ graph TD
 
 ## ✨ Key Features
 
-- **🚀 One-Click / Hotkey Hibernation**: Hit **`Ctrl + Alt + B`** or double-click the **Study Break** icon to safely hibernate in under 3 seconds.
-- **⚡ 100% Session Preservation**: Open browser tabs, unsaved notes, and workspaces are stored safely in disk hibernation (`hiberfil.sys`) with zero battery draw.
-- **🛡️ Accidental Sleep Protection**: If you fall asleep and leave the PC idle for 30 minutes, SlumberGuard executes a clean forced shutdown (`shutdown /s /f /t 0`).
+- **🚀 One-Click / Hotkey Immunity**: Hit **`Ctrl + Alt + B`** or double-click the **Study Break** icon to toggle Break Mode.
+- **⚡ Zero Interruption**: Keeps your background music, downloads, and workspace running without forced sleep mode.
+- **🛡️ Accidental Sleep Protection**: If you fall asleep and leave the PC idle for 30 minutes, SleepSafe executes a clean forced shutdown (`shutdown /s /f /t 0`).
 - **☁️ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
 - **🔋 Battery-Aware Execution**: Bypasses Windows Task Scheduler's default limitation to ensure idle protection triggers even on battery power.
 - **🔕 Completely Silent**: Runs background checks without flashing intrusive command prompt boxes or console windows.
@@ -69,11 +69,12 @@ graph TD
 ## 📦 Project Structure
 
 ```text
-SlumberGuard/
-├── StudyBreak.ps1              # Core logic: Creates break marker & hibernates
+SleepSafe/
+├── StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
 ├── StudyBreak.bat              # Standalone batch launcher
 ├── IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
 ├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & Desktop icon)
+├── Reinstall.bat               # 1-click self-elevating reinstaller
 ├── Uninstall-StudySafetySystem.ps1 # One-click removal script
 └── README.md                   # Documentation
 ```
