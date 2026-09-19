@@ -26,34 +26,31 @@ Think of **SlumberGuard** as an intelligent safety switch for your laptop:
 
 | Your Action | Laptop's Interpretation | What Happens |
 | :--- | :--- | :--- |
-| 🟢 **You Click the Button** (or press `Ctrl+Alt+B`) | **"I am on an intentional break — DO NOT shut down my laptop!"** | Instantly saves all your open tabs, notes, and code into **Hibernate**. Zero battery wasted. When you wake it up, your work is 100% untouched. |
-| 🔴 **You Do NOTHING** (Accidentally fell asleep) | **"No break signal received and 30m idle — they fell asleep!"** | The background watcher activates after 30 minutes of inactivity and **executes a clean forced shutdown** to protect your battery and SSD. |
+| 🟢 **You Click the Button** (or press `Ctrl+Alt+B`) | **"I am on an intentional break — DO NOT shut down my PC!"** | Sends the break signal. Your PC **stays ON and active** (does not force sleep), but the 30-minute auto-shutdown is **PAUSED**. Your downloads and music keep running safely. |
+| 🔴 **You Do NOTHING** (Accidentally fell asleep) | **"No break signal received and 30m idle — user fell asleep!"** | The background watcher activates after 30 minutes of complete inactivity and **executes a clean forced shutdown** to protect your battery and SSD. |
 
 ---
 
 ## 🎯 The Problem SlumberGuard Solves
 
-When studying late at night on a laptop, you face a dilemma:
-1. **If you step away for a break**: You don't want Windows auto-closing your 20 research tabs, PDF textbooks, and unsaved code.
-2. **If you accidentally fall asleep**: You don't want your laptop burning all night on your bed or desk, killing your battery cycles, overheating, and wearing out hardware.
-
-Standard Windows Sleep is flawed—it wastes 15%–30% of battery overnight keeping RAM powered. Automatic shutdown timers are too aggressive—they kill your tabs even when you just stepped away for coffee.
+When working late on your PC, you face a dilemma:
+1. **If you step away for a break**: You want your computer to stay on and active without Windows auto-shutting down your 20 research tabs, background tasks, or unsaved work.
+2. **If you accidentally fall asleep**: You don't want your laptop/PC burning all night on your bed or desk, draining battery cycles, overheating, and wearing out hardware.
 
 **SlumberGuard gives you the best of both worlds with zero friction.**
 
 ```mermaid
 graph TD
-    A[You Step Away From Laptop] --> B{Did you click 'Study Break'?}
+    A[You Step Away From PC] --> B{Did you click 'Study Break'?}
     
-    B -- YES: 'Don't shut down, I'm on break!' --> C[Marker file created on Desktop]
-    C --> D[Instant Deep Hibernate: RAM saved to SSD]
-    D --> E[Zero battery drain: PC completely powered down]
-    E --> F[Open lid later -> Everything restored intact!]
-    F --> G[Idle watcher sees marker -> Deletes marker & DOES NOT shut down]
+    B -- YES: 'Don't shut down, I'm on break!' --> C[Break signal active on Desktop]
+    C --> D[PC stays ON normally: No forced sleep!]
+    D --> E[After 30 mins idle -> Watcher sees signal]
+    E --> F[Auto-Shutdown is SKIPPED -> PC stays safe!]
 
-    B -- NO: You fell asleep (Dead Silence) --> H[Computer idles for 30 minutes]
-    H --> I[Watcher checks: Was break marker created?]
-    I -- NO MARKER FOUND --> J[Clean Forced Shutdown: Battery & SSD Protected!]
+    B -- NO: You fell asleep (Dead Silence) --> G[Computer idles for 30 minutes]
+    G --> H[Watcher checks: Was break signal given?]
+    H -- NO SIGNAL FOUND --> I[Clean Forced Shutdown: Battery & SSD Protected!]
 ```
 
 ---

@@ -1,39 +1,47 @@
 <#
 .SYNOPSIS
-    Study Break Button Script
+    Study Break Signal Button (SlumberGuard)
 .DESCRIPTION
-    1. Creates 'break_marker.txt' on the user's Desktop.
-    2. Immediately triggers deep Hibernation (saving RAM state to SSD and powering down).
+    Signals that you are on an intentional break.
+    - Creates 'break_marker.txt' on Desktop so 30-min auto-shutdown is PAUSED.
+    - Does NOT force sleep or hibernate mode—your PC stays on and active.
+    - Clicking it again when you return toggles Break Mode OFF.
 #>
 
-# 1. Resolve the Desktop path reliably (supports OneDrive redirection)
+# 1. Resolve true Desktop path (supports OneDrive folder redirection)
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
 if (-not (Test-Path -Path $desktopPath)) {
     $desktopPath = Join-Path $env:USERPROFILE "Desktop"
 }
 
 $markerPath = Join-Path $desktopPath "break_marker.txt"
+$wsh = New-Object -ComObject Wscript.Shell
 
-# 2. Create the break marker file with timestamp
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$markerContent = @"
+# 2. Toggle Break Mode
+if (Test-Path -Path $markerPath) {
+    # Already on break -> Toggle OFF (Back to study)
+    try {
+        Remove-Item -Path $markerPath -Force -ErrorAction SilentlyContinue
+    } catch {}
+    
+    $wsh.Popup("📚 Back to Study!`n`nBreak mode is now OFF. 30-minute idle shutdown protection is RE-ARMED.", 3, "SlumberGuard", 64) | Out-Null
+} else {
+    # Start break -> Toggle ON (Pause 30-min shutdown)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $markerContent = @"
 =========================================
 INTENTIONAL STUDY BREAK ACTIVE
-Initiated at: $timestamp
-Laptop state: Hibernated
+Initiated: $timestamp
+Status: Auto-shutdown PAUSED. Laptop stays ON.
 =========================================
-This file indicates to the Idle Mistake Detector
-that this break was intentional.
 "@
+    try {
+        Set-Content -Path $markerPath -Value $markerContent -Force -ErrorAction Stop
+    } catch {
+        $fallbackPath = Join-Path $env:USERPROFILE "Desktop\break_marker.txt"
+        Set-Content -Path $fallbackPath -Value $markerContent -Force
+    }
 
-try {
-    Set-Content -Path $markerPath -Value $markerContent -Force -ErrorAction Stop
-} catch {
-    # Fallback to local profile Desktop if permission or path issue
-    $fallbackPath = Join-Path $env:USERPROFILE "Desktop\break_marker.txt"
-    Set-Content -Path $fallbackPath -Value $markerContent -Force
+    # Notify user with a 3-second popup (laptop does NOT sleep/hibernate)
+    $wsh.Popup("☕ Study Break Activated!`n`nSignal sent: Auto-shutdown is PAUSED.`nYour PC will NOT shut down even after 30 mins.", 4, "SlumberGuard", 64) | Out-Null
 }
-
-# 3. Enter Deep Hibernate immediately
-# /h = Hibernate
-shutdown.exe /h
