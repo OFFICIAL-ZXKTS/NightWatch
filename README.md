@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/icon.png" width="140" height="140" alt="SleepSafe Logo" />
+
 # 🛡️ SleepSafe
 
 ### *Smart Study-Break & Battery-Preserving Idle Sentinel for Windows 11*
@@ -7,14 +9,14 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%7C%2010-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://microsoft.com)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?style=for-the-badge&logo=powershell&logoColor=white)](https://github.com/PowerShell/PowerShell)
 [![License](https://img.shields.io/badge/License-Apache%202.0-D22128?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-Yes-brightgreen?style=for-the-badge)](#)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-Yes-brightgreen?style=for-the-badge)](https://github.com/OFFICIAL-ZXKTS/SlumberGuard)
 
 <p align="center">
   <b>Never wake up to a dead laptop battery or lost study session again.</b><br>
   Differentiates between intentional study breaks and accidentally falling asleep.
 </p>
 
-[Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Installation](#-quick-installation) • [Usage](#-usage) • [FAQ](#-frequently-asked-questions) • [Uninstallation](#-uninstallation)
+[Key Features](#-key-features) • [How It Works](#-how-it-works) • [Desktop Icon](#-custom-desktop-icon) • [Quick Installation](#-quick-installation) • [Usage](#-usage) • [FAQ](#-frequently-asked-questions) • [Uninstallation](#-uninstallation)
 
 </div>
 
@@ -70,14 +72,37 @@ graph TD
 
 ```text
 SleepSafe/
+├── assets/
+│   ├── icon.png                # High-res 3D preview logo
+│   └── icon.ico                # Windows 256x256 desktop shortcut icon
 ├── StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
 ├── StudyBreak.bat              # Standalone batch launcher
 ├── IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
-├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & Desktop icon)
+├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
 ├── Reinstall.bat               # 1-click self-elevating reinstaller
 ├── Uninstall-StudySafetySystem.ps1 # One-click removal script
+├── LICENSE                     # Official Apache 2.0 License
 └── README.md                   # Documentation
 ```
+
+---
+
+## 🎨 Custom Desktop Icon
+
+SleepSafe includes a custom-designed 3D app icon representing late-night study and sleep safety:
+
+<div align="center">
+  <img src="assets/icon.png" width="120" height="120" alt="SleepSafe Icon" /><br>
+  <sub><b>assets/icon.ico</b> (256x256 high-resolution Windows icon)</sub>
+</div>
+
+### How the icon is applied:
+- **Automatic:** Running `Install-StudySafetySystem.ps1` or double-clicking `Reinstall.bat` automatically binds `assets\icon.ico` to your Desktop shortcut!
+- **Manual (Optional):**
+  1. Right-click the **Study Break** shortcut on your Desktop $\rightarrow$ select **Properties**.
+  2. Under the **Shortcut** tab, click **Change Icon...**.
+  3. Click **Browse...** $\rightarrow$ choose `assets\icon.ico` from your SleepSafe folder.
+  4. Click **OK** $\rightarrow$ **Apply**.
 
 ---
 
@@ -87,7 +112,7 @@ SleepSafe/
 
 1. Clone or download this repository.
 2. Open **PowerShell as Administrator** (`Win + X` $\rightarrow$ **Terminal (Admin)**).
-3. Navigate to the folder and run:
+3. Navigate to your SleepSafe folder and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -96,7 +121,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 The installer will automatically:
 - Enable Windows Deep Hibernation (`powercfg /hibernate on`).
-- Create a dedicated **Study Break** icon on your Desktop with the hotkey **`Ctrl + Alt + B`**.
+- Create your **Study Break** Desktop icon with the custom 3D icon and `Ctrl + Alt + B` hotkey.
 - Register the 30-minute idle detector in Windows Task Scheduler with full battery support.
 
 ---
@@ -110,16 +135,16 @@ The installer will automatically:
    Run in Admin Terminal: `powercfg /hibernate on`
 2. **Create Desktop Shortcut**:
    - Right-click Desktop $\rightarrow$ **New** $\rightarrow$ **Shortcut**.
-   - Location: `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Path\To\StudyBreak.ps1"`
-   - Name it `Study Break` and pick an icon from `shell32.dll`.
+   - Location: `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%USERPROFILE%\Downloads\Shutdown\StudyBreak.ps1"`
+   - Name it `Study Break` and select the icon from `assets\icon.ico`.
 3. **Register Task Scheduler**:
    - Open `taskschd.msc`.
    - **General**: Name: `IdleMistakeDetector` • Select *Run only when user is logged on* • Check *Run with highest privileges*.
    - **Triggers**: New $\rightarrow$ Begin the task: *On idle*.
-   - **Actions**: Start a program $\rightarrow$ `powershell.exe` $\rightarrow$ Arguments: `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Path\To\IdleMistakeDetector.ps1"`.
+   - **Actions**: Start a program $\rightarrow$ `powershell.exe` $\rightarrow$ Arguments: `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%USERPROFILE%\Downloads\Shutdown\IdleMistakeDetector.ps1"`.
    - **Conditions**: 
      - *Start the task only if computer is idle for:* **30 minutes**.
-     - **Uncheck** *Start the task only if computer is on AC power* (ensures laptop works on battery).
+     - **Uncheck** *Start the task only if computer is on AC power* (ensures protection works on battery).
    - Click **OK**.
 
 </details>
@@ -132,13 +157,14 @@ The installer will automatically:
 1. When you step away from your desk, do either:
    - **Double-click** the **Study Break** desktop shortcut, OR
    - Press **`Ctrl + Alt + B`** on your keyboard.
-2. Your laptop enters deep hibernation. All your browser tabs, PDFs, and code stay intact.
-3. When you open the lid later, everything is right where you left it.
+2. A popup confirms: *"Study Break Activated! Auto-shutdown is PAUSED."*
+3. Your PC stays ON normally with no forced sleep. After 30 minutes of idle time, the background watcher sees your break signal and skips shutdown.
+4. When you return, click the button again to resume standard protection.
 
 ### Scenario B: Accidentally Falling Asleep
-1. You fall asleep while studying without hitting the button.
+1. You fall asleep while studying without hitting the break button.
 2. After **30 minutes of no mouse/keyboard activity**, the background watcher runs.
-3. It detects that no intentional study marker exists.
+3. It detects that no intentional break signal exists.
 4. It performs a clean, forced shutdown to protect your battery and hardware.
 
 ---

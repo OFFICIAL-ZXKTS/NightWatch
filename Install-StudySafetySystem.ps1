@@ -48,9 +48,13 @@ try {
     $shortcut = $wshShell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = "powershell.exe"
     $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$breakScriptPath`""
-    $shortcut.WorkingDirectory = $scriptDir
-    $shortcut.IconLocation = "shell32.dll,27" # Classic power/sleep icon
-    $shortcut.Description = "Take an intentional Study Break (Hibernates PC and sets safety marker)"
+    $customIconPath = Join-Path $scriptDir "assets\icon.ico"
+    if (Test-Path $customIconPath) {
+        $shortcut.IconLocation = "$customIconPath,0"
+    } else {
+        $shortcut.IconLocation = "shell32.dll,27" # Classic fallback icon
+    }
+    $shortcut.Description = "Take an intentional Study Break (Signals SleepSafe to pause idle shutdown)"
     $shortcut.Hotkey = "Ctrl+Alt+B"
     $shortcut.Save()
     Write-Host " -> Shortcut created on Desktop: '$shortcutPath'" -ForegroundColor Green
