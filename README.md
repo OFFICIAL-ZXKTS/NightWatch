@@ -24,7 +24,7 @@
 
 ## ⚡ The Big Idea: A "Dead Man's Switch" for Late-Night Studying
 
-Think of **SleepSafe** as an intelligent safety switch for your laptop:
+Think of **SleepSafe** as an intelligent safety switch for your **PC**:
 
 | Your Action | Laptop's Interpretation | What Happens |
 | :--- | :--- | :--- |
