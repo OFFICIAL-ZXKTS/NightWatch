@@ -1,0 +1,12 @@
+# Log files
+*.log
+mistake_detector.log
+
+# Temporary marker files
+break_marker.txt
+
+# Windows shortcuts generated locally
+*.lnk
+
+# PowerShell history & temporary files
+*.tmp
