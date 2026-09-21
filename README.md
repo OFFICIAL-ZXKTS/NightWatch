@@ -233,7 +233,7 @@ $targetIdleSeconds = 1800   # 30 minutes
 
 To cleanly remove the shortcut and scheduled task:
 1. Open **PowerShell as Administrator**.
-2. Located to your **Repsitory Folder**.
+2. Located to your **Repository Folder**.
 3. Run:
 ```powershell
 .\Uninstall-StudySafetySystem.ps1
