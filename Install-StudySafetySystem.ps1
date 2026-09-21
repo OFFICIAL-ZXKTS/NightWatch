@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    Automated One-Click Installer for Study Break & Idle Mistake Detector
+    Automated One-Click Installer for SleepSafe (v2.0)
 .DESCRIPTION
     1. Enables Windows Hibernation (powercfg /hibernate on).
-    2. Creates a clean 'Study Break' Desktop shortcut with an icon and hotkey (Ctrl+Alt+B).
-    3. Registers the Windows 11 Scheduled Task with a 30-minute idle trigger and battery support.
+    2. Creates 'Study Break' Desktop shortcut with custom 3D icon and Ctrl+Alt+B hotkey.
+    3. Registers SleepSafe Administrative Sentinel task with true Win32 idle monitoring.
 #>
 
 # Check for Administrator privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Warning "Please run this script in an Administrator PowerShell window to configure Scheduled Tasks and Hibernation."
+    Write-Warning "Please run this script in an Administrator PowerShell window."
     Write-Host "Right-click PowerShell -> 'Run as Administrator', then execute this script again."
     pause
     exit 1
@@ -23,11 +23,17 @@ $breakScriptPath = Join-Path $scriptDir "StudyBreak.ps1"
 $idleScriptPath = Join-Path $scriptDir "IdleMistakeDetector.ps1"
 
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "  Installing Windows 11 Study Break & Safety System  " -ForegroundColor Cyan
+Write-Host "       Installing SleepSafe v2.0 Sentinel            " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 
-# 1. Enable Hibernation
-Write-Host "`n[1/3] Enabling Windows Hibernation..." -ForegroundColor Yellow
+# 1. Ensure Global Data Directory Exists
+$dataDir = "C:\ProgramData\SleepSafe"
+if (-not (Test-Path $dataDir)) {
+    New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+}
+
+# 2. Enable Hibernation
+Write-Host "`n[1/3] Verifying Windows Hibernation..." -ForegroundColor Yellow
 try {
     powercfg /hibernate on
     Write-Host " -> Hibernation is enabled successfully." -ForegroundColor Green
@@ -35,10 +41,10 @@ try {
     Write-Warning " -> Failed to set powercfg /hibernate on: $_"
 }
 
-# 2. Create Desktop Shortcut
-Write-Host "`n[2/3] Creating 'Study Break' Desktop Shortcut..." -ForegroundColor Yellow
+# 3. Create Desktop Shortcut
+Write-Host "`n[2/3] Creating 'Study Break' Desktop Shortcut with 3D Icon..." -ForegroundColor Yellow
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
-if (-not (Test-Path -Path $desktopPath)) {
+if (-not (Test-Path $desktopPath)) {
     $desktopPath = Join-Path $env:USERPROFILE "Desktop"
 }
 $shortcutPath = Join-Path $desktopPath "Study Break.lnk"
@@ -48,11 +54,12 @@ try {
     $shortcut = $wshShell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = "powershell.exe"
     $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$breakScriptPath`""
+    $shortcut.WorkingDirectory = $scriptDir
     $customIconPath = Join-Path $scriptDir "assets\icon.ico"
     if (Test-Path $customIconPath) {
         $shortcut.IconLocation = "$customIconPath,0"
     } else {
-        $shortcut.IconLocation = "shell32.dll,27" # Classic fallback icon
+        $shortcut.IconLocation = "shell32.dll,27"
     }
     $shortcut.Description = "Take an intentional Study Break (Signals SleepSafe to pause idle shutdown)"
     $shortcut.Hotkey = "Ctrl+Alt+B"
@@ -63,21 +70,35 @@ try {
     Write-Warning " -> Failed to create shortcut: $_"
 }
 
-# 3. Register the 30-minute Idle Scheduled Task
-Write-Host "`n[3/3] Registering Task Scheduler 'IdleMistakeDetector' (30 min idle)..." -ForegroundColor Yellow
+# 4. Register SleepSafe Sentinel in Task Scheduler
+Write-Host "`n[3/3] Registering SleepSafe Administrative Sentinel (1-min Win32 precision check)..." -ForegroundColor Yellow
 
-$taskName = "IdleMistakeDetector"
+$taskName = "SleepSafeSentinel"
+$oldTaskName = "IdleMistakeDetector"
+
 $taskXml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Detects accidental idle (falling asleep) after 30 minutes and executes a safe forced shutdown unless an intentional study break marker exists on the Desktop.</Description>
-    <Author>StudySafetySystem</Author>
+    <Description>SleepSafe Sentinel v2.0: Accurately checks physical 30-minute keyboard/mouse idle time via Win32 API, respects intentional study breaks, and provides audible warning beeps before shutdown.</Description>
+    <Author>OFFICIAL-ZXKTS</Author>
   </RegistrationInfo>
   <Triggers>
-    <IdleTrigger>
+    <TimeTrigger>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
-    </IdleTrigger>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -92,20 +113,10 @@ $taskXml = @"
     <AllowHardTerminate>true</AllowHardTerminate>
     <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <IdleSettings>
-      <Duration>PT30M</Duration>
-      <WaitTimeout>PT2H</WaitTimeout>
-      <StopOnIdleEnd>false</StopOnIdleEnd>
-      <RestartOnIdle>false</RestartOnIdle>
-    </IdleSettings>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
-    <RunOnlyIfIdle>true</RunOnlyIfIdle>
-    <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
-    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
-    <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
@@ -118,7 +129,9 @@ $taskXml = @"
 "@
 
 try {
-    # Unregister existing task if present
+    # Remove old buggy task if present
+    Unregister-ScheduledTask -TaskName $oldTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    # Remove and register new sentinel task
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     Register-ScheduledTask -TaskName $taskName -Xml $taskXml -Force | Out-Null
     Write-Host " -> Task '$taskName' registered successfully in Task Scheduler!" -ForegroundColor Green
@@ -127,9 +140,9 @@ try {
 }
 
 Write-Host "`n======================================================" -ForegroundColor Cyan
-Write-Host "  Setup Complete! System is fully active.             " -ForegroundColor Cyan
+Write-Host "  SleepSafe v2.0 Installed & Fully Active!           " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "To test:"
-Write-Host " 1. Click the 'Study Break' icon on your Desktop (or press Ctrl+Alt+B)."
-Write-Host " 2. Laptop will hibernate, saving open tabs, and 'break_marker.txt' will appear on Desktop."
-Write-Host " 3. If you leave PC idle for 30m without clicking Study Break, it will shut down cleanly."
+Write-Host "Upgrades in this version:"
+Write-Host " 1. Precise 30-min physical idle detection (no more 10-min false shutdowns!)."
+Write-Host " 2. Robust Study Break tracking with double-click protection."
+Write-Host " 3. 30-second warning BEEPS before shutdown (touching mouse cancels shutdown!)."

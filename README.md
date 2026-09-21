@@ -59,12 +59,13 @@ graph TD
 
 ## ✨ Key Features
 
-- **🚀 One-Click / Hotkey Immunity**: Hit **`Ctrl + Alt + B`** or double-click the **Study Break** icon to toggle Break Mode.
-- **⚡ Zero Interruption**: Keeps your background music, downloads, and workspace running without forced sleep mode.
-- **🛡️ Accidental Sleep Protection**: If you fall asleep and leave the PC idle for 30 minutes, SleepSafe executes a clean forced shutdown (`shutdown /s /f /t 0`).
+- **🎯 True 30-Minute Physical Idle Tracking**: Uses Win32 `GetLastInputInfo` to measure exact keyboard and mouse idle time. Immune to Windows 11 false alarms (no more premature shutdowns at 10 minutes when your screen dims!).
+- **🔊 30-Second Warning Beep Countdown**: Plays audible warning beeps before shutting down. Moving the mouse or tapping any key during the beeps instantly aborts the shutdown!
+- **☕ Bulletproof Break Mode**: Toggle on break mode with **`Ctrl + Alt + B`** or by double-clicking the custom icon. Immune to rapid double-clicks (debounce guard), keeps PC alive throughout your break, and auto-resumes protection once you return and type.
+- **🛡️ Accidental Sleep Defense**: If you truly fall asleep with no break active, SleepSafe executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
 - **☁️ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
-- **🔋 Battery-Aware Execution**: Bypasses Windows Task Scheduler's default limitation to ensure idle protection triggers even on battery power.
-- **🔕 Completely Silent**: Runs background checks without flashing intrusive command prompt boxes or console windows.
+- **🔋 Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
+- **⚙️ Purely Administrative**: Runs elevated in the background via Task Scheduler with zero manual maintenance needed.
 
 ---
 
