@@ -17,7 +17,11 @@ if (-not $isAdmin) {
 }
 
 $scriptDir = $PSScriptRoot
-if (-not $scriptDir) { $scriptDir = "C:\Users\diyaj\Downloads\Shutdown" }
+if (-not $scriptDir) {
+    Write-Warning "Could not determine script directory. Please run via .ps1 file path, not -Command."
+    pause
+    exit 1
+}
 
 $breakScriptPath = Join-Path $scriptDir "StudyBreak.ps1"
 $idleScriptPath = Join-Path $scriptDir "IdleMistakeDetector.ps1"
@@ -85,7 +89,7 @@ $taskXml = @"
   </RegistrationInfo>
   <Triggers>
     <TimeTrigger>
-      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <StartBoundary>2000-01-01T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
       <Repetition>
         <Interval>PT1M</Interval>
