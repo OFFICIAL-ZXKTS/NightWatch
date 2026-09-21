@@ -1,22 +1,16 @@
 <#
 .SYNOPSIS
-    SleepSafe Automated Mistake Detector & Idle Sentinel (v2.0)
+    SleepSafe Automated Mistake Detector & Idle Sentinel (v2.1)
 .DESCRIPTION
     1. Measures TRUE physical keyboard/mouse idle time via Win32 GetLastInputInfo.
     2. Only acts if computer has been idle for AT LEAST 30 MINUTES (1800 seconds).
-    3. Checks if Study Break mode is active:
-       - IF BREAK ACTIVE: Skips shutdown. PC stays on safely.
-       - IF NO BREAK (Fell asleep):
-         * Plays 30 seconds of loud warning BEEPS.
-         * If user touches mouse or keyboard during the beeps, shutdown is CANCELLED!
-         * If no activity for 30s, cleanly shuts down to protect battery & SSD.
+    3. Never modifies or deletes Desktop files, preventing desktop icon refresh/flicker.
+    4. If 30-min idle is reached without break mode:
+       - Plays 30 seconds of warning beeps.
+       - Moving mouse or pressing any key cancels shutdown immediately.
 #>
 
-# 1. Compile Win32 LastInputInfo if not already compiled.
-#    Uses Environment.TickCount (int, wraps at ~24.8 days). The uint subtraction
-#    below wraps correctly across the boundary, so the 24.8-day rollover is
-#    handled without special casing. (TickCount64 needs .NET 4.6+, so we
-#    intentionally stay on the universally-available TickCount.)
+# 1. Compile Win32 LastInputInfo if not already loaded
 if (-not ([System.Management.Automation.PSTypeName]'Win32Idle').Type) {
     Add-Type @'
 using System;
@@ -36,29 +30,32 @@ public class Win32Idle {
         LASTINPUTINFO lii = new LASTINPUTINFO();
         lii.cbSize = (uint)Marshal.SizeOf(lii);
         if (!GetLastInputInfo(ref lii)) return 0;
-        // Cast to uint first: subtraction in uint math wraps correctly
-        // across the ~24.8-day TickCount rollover, giving the true elapsed
-        // milliseconds modulo 2^32.
         return (uint)Environment.TickCount - lii.dwTime;
     }
 }
 '@
 }
 
-# 2. Get TRUE physical idle time in seconds
+# 2. Get true physical idle time in seconds
 $idleMs = [Win32Idle]::GetIdleTimeMs()
 $idleSeconds = [Math]::Floor($idleMs / 1000)
 $targetIdleSeconds = 1800 # 30 minutes exact
 
-# Logs live in C:\ProgramData\SleepSafe so they don't leak into the repo folder.
-$dataDir = "C:\ProgramData\SleepSafe"
-if (-not (Test-Path $dataDir)) {
-    try { New-Item -ItemType Directory -Path $dataDir -Force | Out-Null } catch {}
+# IF COMPUTER IS NOT IDLE FOR 30 MINUTES -> EXIT IMMEDIATELY
+# Does not touch any files, does not steal focus, 0% CPU impact.
+if ($idleSeconds -lt $targetIdleSeconds) {
+    exit 0
 }
+
+# -----------------------------------------------------------------
+# 30 MINUTES OF TRUE INACTIVITY REACHED
+# -----------------------------------------------------------------
+
+$dataDir = "C:\ProgramData\SleepSafe"
 $logFile = Join-Path $dataDir "mistake_detector.log"
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-# 3. Check break status from global state & desktop markers
+# Check if break mode is currently active (Read-only check)
 $stateFile = Join-Path $dataDir "break_state.json"
 $isBreakActive = $false
 
@@ -66,101 +63,72 @@ if (Test-Path $stateFile) {
     try {
         $json = Get-Content $stateFile -Raw | ConvertFrom-Json
         $isBreakActive = [bool]$json.Active
+        
+        # Auto-expire break mode if it has been active for more than 6 hours
+        if ($isBreakActive -and $json.Timestamp) {
+            $ageHours = ((Get-Date) - [DateTime]$json.Timestamp).TotalHours
+            if ($ageHours -gt 6) {
+                $isBreakActive = $false
+            }
+        }
     } catch {}
 }
 
-# Also scan possible desktop locations for marker
-$desktopPaths = @(
-    (Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)) "break_marker.txt"),
-    (Join-Path $env:USERPROFILE "Desktop\break_marker.txt")
-)
-if ($env:OneDrive) {
-    $desktopPaths += (Join-Path $env:OneDrive "Desktop\break_marker.txt")
-}
-$userDirs = Get-ChildItem -Path "C:\Users" -Directory -ErrorAction SilentlyContinue | 
-            Where-Object { $_.Name -notmatch '^(Public|Default|Default User|All Users)$' }
-foreach ($dir in $userDirs) {
-    $desktopPaths += (Join-Path $dir.FullName "Desktop\break_marker.txt")
-    $desktopPaths += (Join-Path $dir.FullName "OneDrive\Desktop\break_marker.txt")
-}
-foreach ($p in ($desktopPaths | Select-Object -Unique)) {
-    if (Test-Path -Path $p) {
+# Also check for Desktop marker existence (Read-only check)
+if (-not $isBreakActive) {
+    $desktopMarker = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)) "break_marker.txt"
+    if (Test-Path $desktopMarker) {
         $isBreakActive = $true
-        break
     }
 }
-
-# CHECK 1: If user returned and is actively typing/moving mouse (idle < 30 seconds), automatically clear break!
-if ($idleSeconds -lt 30 -and $isBreakActive) {
-    if (Test-Path $stateFile) {
-        @{ Active = $false; Timestamp = (Get-Date).ToString("o"); Mode = "AutoResumed" } | ConvertTo-Json | Set-Content -Path $stateFile -Force
-    }
-    foreach ($p in ($desktopPaths | Select-Object -Unique)) {
-        if (Test-Path -Path $p) {
-            Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
-        }
-    }
-    exit 0
-}
-
-# CHECK 2: Has the computer been idle for AT LEAST 30 MINUTES?
-if ($idleSeconds -lt $targetIdleSeconds) {
-    # Not yet 30 minutes! NEVER shut down prematurely!
-    exit 0
-}
-
-# -----------------------------------------------------------------
-# COMPUTER HAS BEEN IDLE FOR 30+ MINUTES
-# -----------------------------------------------------------------
 
 if ($isBreakActive) {
-    # Intentional Break Active -> SKIP SHUTDOWN
-    $logMsg = "[$timestamp] INTENTIONAL BREAK ACTIVE: Computer has been idle for $([Math]::Round($idleSeconds/60,1)) mins, but user is on break. Shutdown suppressed."
+    # Intentional break is active: DO NOT SHUT DOWN.
+    # Leave laptop alone and do not touch any desktop files.
+    $logMsg = "[$timestamp] INTENTIONAL BREAK: Computer idle for $([Math]::Round($idleSeconds/60,1)) mins, but break is active. Shutdown skipped."
     Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
     exit 0
-} else {
-    # ACCIDENTAL SLEEP DETECTED: No break signal & 30m idle!
-    $logMsg = "[$timestamp] ACCIDENTAL SLEEP DETECTED: Computer idle for $([Math]::Round($idleSeconds/60,1)) mins without break signal. Starting 30-second warning beeps..."
-    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
-
-    # -----------------------------------------------------------------
-    # 30-SECOND AUDIBLE WARNING BEEP COUNTDOWN
-    # -----------------------------------------------------------------
-    $aborted = $false
-    $beepCycles = 15 # 15 cycles of 2 seconds = 30 seconds total warning
-
-    for ($i = 0; $i -lt $beepCycles; $i++) {
-        # Check if user moved mouse or pressed any key
-        $latestIdle = [Win32Idle]::GetIdleTimeMs() / 1000
-        if ($latestIdle -lt 5) {
-            # User moved mouse or hit a key! Abort shutdown!
-            $aborted = $true
-            break
-        }
-
-        # Beep warning sound through speakers
-        try {
-            [Console]::Beep(1000, 250)
-            Start-Sleep -Milliseconds 150
-            [Console]::Beep(1400, 350)
-        } catch {
-            try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}
-        }
-
-        Start-Sleep -Milliseconds 1250
-    }
-
-    if ($aborted) {
-        $logMsg = "[$timestamp] SHUTDOWN CANCELLED: User activity detected during warning beeps. PC stays awake."
-        Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
-        try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
-        exit 0
-    }
-
-    # 30-second beeping finished with NO user activity -> User is asleep!
-    $logMsg = "[$timestamp] EXECUTING FORCED SHUTDOWN: 30-second warning beeps ignored. Shutting down cleanly."
-    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
-
-    # Execute clean forced shutdown
-    shutdown.exe /s /f /t 0
 }
+
+# -----------------------------------------------------------------
+# ACCIDENTAL SLEEP DETECTED: 30-SECOND WARNING BEEP COUNTDOWN
+# -----------------------------------------------------------------
+$logMsg = "[$timestamp] ACCIDENTAL SLEEP: 30 mins idle reached without break signal. Starting warning beeps..."
+Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+
+$aborted = $false
+$beepCycles = 15 # 15 cycles of 2 seconds = 30 seconds
+
+for ($i = 0; $i -lt $beepCycles; $i++) {
+    # Check if user moved mouse or pressed any key
+    $latestIdle = [Win32Idle]::GetIdleTimeMs() / 1000
+    if ($latestIdle -lt 5) {
+        # User moved mouse or pressed key! Cancel immediately!
+        $aborted = $true
+        break
+    }
+
+    # Sound warning beep through speakers
+    try {
+        [Console]::Beep(1000, 250)
+        Start-Sleep -Milliseconds 100
+        [Console]::Beep(1400, 300)
+    } catch {
+        try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}
+    }
+
+    Start-Sleep -Milliseconds 1350
+}
+
+if ($aborted) {
+    $logMsg = "[$timestamp] SHUTDOWN CANCELLED: Activity detected during warning beeps. PC stays awake."
+    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+    try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
+    exit 0
+}
+
+# Warning beeps expired with zero input -> Clean forced shutdown
+$logMsg = "[$timestamp] SHUTTING DOWN: Warning beeps expired without response. PC protecting battery & SSD."
+Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+
+shutdown.exe /s /f /t 0

@@ -80,11 +80,13 @@ Write-Host "`n[3/3] Registering SleepSafe Administrative Sentinel (1-min Win32 p
 $taskName = "SleepSafeSentinel"
 $oldTaskName = "IdleMistakeDetector"
 
+$silentRunnerPath = Join-Path $scriptDir "SilentRunner.vbs"
+
 $taskXml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>SleepSafe Sentinel v2.0: Accurately checks physical 30-minute keyboard/mouse idle time via Win32 API, respects intentional study breaks, and provides audible warning beeps before shutdown.</Description>
+    <Description>SleepSafe Sentinel v2.1: Accurately checks physical 30-minute keyboard/mouse idle time via Win32 API, respects intentional study breaks, and provides audible warning beeps before shutdown with 100% silent execution.</Description>
     <Author>OFFICIAL-ZXKTS</Author>
   </RegistrationInfo>
   <Triggers>
@@ -92,14 +94,14 @@ $taskXml = @"
       <StartBoundary>2000-01-01T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
       <Repetition>
-        <Interval>PT1M</Interval>
+        <Interval>PT2M</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
       </Repetition>
     </TimeTrigger>
     <LogonTrigger>
       <Enabled>true</Enabled>
       <Repetition>
-        <Interval>PT1M</Interval>
+        <Interval>PT2M</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
       </Repetition>
     </LogonTrigger>
@@ -119,14 +121,14 @@ $taskXml = @"
     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
-    <Hidden>false</Hidden>
+    <Hidden>true</Hidden>
     <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$idleScriptPath`"</Arguments>
+      <Command>wscript.exe</Command>
+      <Arguments>"$silentRunnerPath"</Arguments>
     </Exec>
   </Actions>
 </Task>

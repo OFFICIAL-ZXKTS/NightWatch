@@ -79,6 +79,7 @@ SleepSafe/
 ├── StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
 ├── StudyBreak.bat              # Standalone batch launcher
 ├── IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
+├── SilentRunner.vbs            # Zero-window invisible launcher for Task Scheduler
 ├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
 ├── Reinstall.bat               # 1-click self-elevating reinstaller
 ├── Uninstall-StudySafetySystem.ps1 # One-click removal script
