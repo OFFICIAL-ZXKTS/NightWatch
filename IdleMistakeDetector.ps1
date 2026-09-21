@@ -12,9 +12,11 @@
          * If no activity for 30s, cleanly shuts down to protect battery & SSD.
 #>
 
-# 1. Compile Win32 LastInputInfo if not already compiled
-#    (Uses Environment.TickCount64 so it does not wrap at ~24.8 days like
-#     Environment.TickCount does on Windows PowerShell 5.1.)
+# 1. Compile Win32 LastInputInfo if not already compiled.
+#    Uses Environment.TickCount (int, wraps at ~24.8 days). The uint subtraction
+#    below wraps correctly across the boundary, so the 24.8-day rollover is
+#    handled without special casing. (TickCount64 needs .NET 4.6+, so we
+#    intentionally stay on the universally-available TickCount.)
 if (-not ([System.Management.Automation.PSTypeName]'Win32Idle').Type) {
     Add-Type @'
 using System;
@@ -34,11 +36,10 @@ public class Win32Idle {
         LASTINPUTINFO lii = new LASTINPUTINFO();
         lii.cbSize = (uint)Marshal.SizeOf(lii);
         if (!GetLastInputInfo(ref lii)) return 0;
-        long now = Environment.TickCount64;
-        long then = lii.dwTime;
-        long idle = now - then;
-        if (idle < 0) idle = 0; // safety; should never happen
-        return (uint)idle;
+        // Cast to uint first: subtraction in uint math wraps correctly
+        // across the ~24.8-day TickCount rollover, giving the true elapsed
+        // milliseconds modulo 2^32.
+        return (uint)Environment.TickCount - lii.dwTime;
     }
 }
 '@
