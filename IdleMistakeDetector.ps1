@@ -12,7 +12,11 @@
          * If no activity for 30s, cleanly shuts down to protect battery & SSD.
 #>
 
-# 1. Compile Win32 LastInputInfo if not already compiled
+# 1. Compile Win32 LastInputInfo if not already compiled.
+#    Uses Environment.TickCount (int, wraps at ~24.8 days). The uint subtraction
+#    below wraps correctly across the boundary, so the 24.8-day rollover is
+#    handled without special casing. (TickCount64 needs .NET 4.6+, so we
+#    intentionally stay on the universally-available TickCount.)
 if (-not ([System.Management.Automation.PSTypeName]'Win32Idle').Type) {
     Add-Type @'
 using System;
@@ -32,6 +36,9 @@ public class Win32Idle {
         LASTINPUTINFO lii = new LASTINPUTINFO();
         lii.cbSize = (uint)Marshal.SizeOf(lii);
         if (!GetLastInputInfo(ref lii)) return 0;
+        // Cast to uint first: subtraction in uint math wraps correctly
+        // across the ~24.8-day TickCount rollover, giving the true elapsed
+        // milliseconds modulo 2^32.
         return (uint)Environment.TickCount - lii.dwTime;
     }
 }
@@ -43,13 +50,15 @@ $idleMs = [Win32Idle]::GetIdleTimeMs()
 $idleSeconds = [Math]::Floor($idleMs / 1000)
 $targetIdleSeconds = 1800 # 30 minutes exact
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $scriptDir) { $scriptDir = "C:\Users\diyaj\Downloads\Shutdown" }
-$logFile = Join-Path $scriptDir "mistake_detector.log"
+# Logs live in C:\ProgramData\SleepSafe so they don't leak into the repo folder.
+$dataDir = "C:\ProgramData\SleepSafe"
+if (-not (Test-Path $dataDir)) {
+    try { New-Item -ItemType Directory -Path $dataDir -Force | Out-Null } catch {}
+}
+$logFile = Join-Path $dataDir "mistake_detector.log"
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
 # 3. Check break status from global state & desktop markers
-$dataDir = "C:\ProgramData\SleepSafe"
 $stateFile = Join-Path $dataDir "break_state.json"
 $isBreakActive = $false
 

@@ -80,6 +80,8 @@ sentinel that this break is intentional.
 "@
     try {
         Set-Content -Path $desktopMarker -Value $markerContent -Force
+        # Hide the marker so it doesn't clutter the user's Desktop.
+        (Get-Item -Path $desktopMarker -Force).Attributes = 'Hidden'
     } catch {}
 
     try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}

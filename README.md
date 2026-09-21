@@ -132,21 +132,40 @@ The installer will automatically:
 <details>
 <summary>Click to view manual step-by-step instructions</summary>
 
+> Only follow these steps if `Install-StudySafetySystem.ps1` failed for some reason
+> and you want to recreate the task by hand. The task name and trigger type must
+> match exactly, otherwise `IdleMistakeDetector.ps1` will not run on cadence.
+
 1. **Enable Hibernation**:
-   Run in Admin Terminal: `powercfg /hibernate on`
-2. **Create Desktop Shortcut**:
+   In an *Administrator* PowerShell or cmd: `powercfg /hibernate on`
+2. **Create the Desktop Shortcut** (optional):
    - Right-click Desktop $\rightarrow$ **New** $\rightarrow$ **Shortcut**.
-   - Location: `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%USERPROFILE%\Downloads\Shutdown\StudyBreak.ps1"`
-   - Name it `Study Break` and select the icon from `assets\icon.ico`.
-3. **Register Task Scheduler**:
-   - Open `taskschd.msc`.
-   - **General**: Name: `IdleMistakeDetector` • Select *Run only when user is logged on* • Check *Run with highest privileges*.
-   - **Triggers**: New $\rightarrow$ Begin the task: *On idle*.
-   - **Actions**: Start a program $\rightarrow$ `powershell.exe` $\rightarrow$ Arguments: `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%USERPROFILE%\Downloads\Shutdown\IdleMistakeDetector.ps1"`.
-   - **Conditions**: 
-     - *Start the task only if computer is idle for:* **30 minutes**.
-     - **Uncheck** *Start the task only if computer is on AC power* (ensures protection works on battery).
-   - Click **OK**.
+   - Location: `powershell.exe`
+   - (Then set its *Target* properties → *Target* field) to:
+     `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<your-path>\StudyBreak.ps1"`
+   - (Optional) set *Change Icon* to your cloned `assets\icon.ico`.
+   - Name the shortcut `Study Break`.
+3. **Register the scheduled task**:
+   - Open `taskschd.msc` → **Create Task…** (not "Create Basic Task").
+   - **General** tab:
+     - **Name**: `SleepSafeSentinel`
+     - Select *Run only when user is logged on*
+     - Check *Run with highest privileges*
+   - **Triggers** tab → **New…**:
+     - Begin the task: *On a schedule* → *Daily*
+     - **Advanced settings**: check *Repeat task every:* `1 minute`, for a *duration of:* `Indefinitely`.
+   - **Actions** tab → **New…**:
+     - Action: *Start a program*
+     - Program/script: `powershell.exe`
+     - Add arguments:
+       `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<your-path>\IdleMistakeDetector.ps1"`
+   - **Conditions** tab:
+     - **Uncheck** *Start the task only if the computer is on AC power*
+     - Leave all other boxes unchecked.
+   - Click **OK** and supply your admin password if prompted.
+
+The idle threshold itself is *not* a scheduler setting (it lives in the script as
+`$targetIdleSeconds = 1800`); see [Customization](#-customization) above.
 
 </details>
 
@@ -160,7 +179,10 @@ The installer will automatically:
    - Press **`Ctrl + Alt + B`** on your keyboard.
 2. A popup confirms: *"Study Break Activated! Auto-shutdown is PAUSED."*
 3. Your PC stays ON normally with no forced sleep. After 30 minutes of idle time, the background watcher sees your break signal and skips shutdown.
-4. When you return, click the button again to resume standard protection.
+4. When you come back, just **start typing or moving the mouse** — SleepSafe
+   *auto-clears* your break signal as soon as it notices activity
+   (typically within ~1 minute). You can also click the button again to
+   manually toggle it off.
 
 ### Scenario B: Accidentally Falling Asleep
 1. You fall asleep while studying without hitting the break button.
@@ -174,10 +196,23 @@ The installer will automatically:
 
 Want to change the idle duration (e.g. to 20 or 45 minutes)?
 
-1. Press `Win + R`, type `taskschd.msc`, and press **Enter**.
-2. Locate `IdleMistakeDetector` in the Task Scheduler Library.
-3. Right-click $\rightarrow$ **Properties** $\rightarrow$ **Conditions** tab.
-4. Modify **Start the task only if the computer is idle for:** to your preferred duration.
+The 30-minute idle threshold is set in `IdleMistakeDetector.ps1`:
+
+```powershell
+$targetIdleSeconds = 1800   # 30 minutes
+```
+
+1. Open `IdleMistakeDetector.ps1` in any text editor (Notepad, VS Code, etc.).
+2. Change `1800` to your preferred value in seconds:
+   - `1200` = 20 minutes
+   - `2700` = 45 minutes
+   - `3600` = 1 hour
+3. Save the file.
+4. Re-run `Reinstall.bat` so the new script gets picked up by the scheduled task.
+
+> **Why not the Task Scheduler GUI?** SleepSafe uses a 1-minute `TimeTrigger` (not the
+> "On idle" trigger), so the *Conditions* tab in `taskschd.msc` does not control the
+> actual threshold — editing the script does.
 
 ---
 
