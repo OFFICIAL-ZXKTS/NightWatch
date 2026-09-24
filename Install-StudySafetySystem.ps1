@@ -1,10 +1,10 @@
-<#
+﻿<#
 .SYNOPSIS
-    Automated One-Click Installer for SleepSafe (v2.0)
+    Automated One-Click Installer for NightWatch (v2.0)
 .DESCRIPTION
     1. Enables Windows Hibernation (powercfg /hibernate on).
     2. Creates 'Study Break' Desktop shortcut with custom 3D icon and Ctrl+Alt+B hotkey.
-    3. Registers SleepSafe Administrative Sentinel task with true Win32 idle monitoring.
+    3. Registers NightWatch Administrative Sentinel task with true Win32 idle monitoring.
 #>
 
 # Check for Administrator privileges
@@ -27,11 +27,11 @@ $breakScriptPath = Join-Path $scriptDir "StudyBreak.ps1"
 $idleScriptPath = Join-Path $scriptDir "IdleMistakeDetector.ps1"
 
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "       Installing SleepSafe v2.0 Sentinel            " -ForegroundColor Cyan
+Write-Host "       Installing NightWatch v2.0 Sentinel            " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 
 # 1. Ensure Global Data Directory Exists
-$dataDir = "C:\ProgramData\SleepSafe"
+$dataDir = "C:\ProgramData\NightWatch"
 if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
@@ -65,7 +65,7 @@ try {
     } else {
         $shortcut.IconLocation = "shell32.dll,27"
     }
-    $shortcut.Description = "Take an intentional Study Break (Signals SleepSafe to pause idle shutdown)"
+    $shortcut.Description = "Take an intentional Study Break (Signals NightWatch to pause idle shutdown)"
     $shortcut.Hotkey = "Ctrl+Alt+B"
     $shortcut.Save()
     Write-Host " -> Shortcut created on Desktop: '$shortcutPath'" -ForegroundColor Green
@@ -74,10 +74,10 @@ try {
     Write-Warning " -> Failed to create shortcut: $_"
 }
 
-# 4. Register SleepSafe Sentinel in Task Scheduler
-Write-Host "`n[3/3] Registering SleepSafe Administrative Sentinel (1-min Win32 precision check)..." -ForegroundColor Yellow
+# 4. Register NightWatch Sentinel in Task Scheduler
+Write-Host "`n[3/3] Registering NightWatch Administrative Sentinel (1-min Win32 precision check)..." -ForegroundColor Yellow
 
-$taskName = "SleepSafeSentinel"
+$taskName = "NightWatchSentinel"
 $oldTaskName = "IdleMistakeDetector"
 
 $silentRunnerPath = Join-Path $scriptDir "SilentRunner.vbs"
@@ -86,7 +86,7 @@ $taskXml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>SleepSafe Sentinel v2.1: Accurately checks physical 30-minute keyboard/mouse idle time via Win32 API, respects intentional study breaks, and provides audible warning beeps before shutdown with 100% silent execution.</Description>
+    <Description>NightWatch Sentinel v2.1: Accurately checks physical 30-minute keyboard/mouse idle time via Win32 API, respects intentional study breaks, and provides audible warning beeps before shutdown with 100% silent execution.</Description>
     <Author>OFFICIAL-ZXKTS</Author>
   </RegistrationInfo>
   <Triggers>
@@ -146,7 +146,7 @@ try {
 }
 
 Write-Host "`n======================================================" -ForegroundColor Cyan
-Write-Host "  SleepSafe v2.0 Installed & Fully Active!           " -ForegroundColor Cyan
+Write-Host "  NightWatch v2.0 Installed & Fully Active!           " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host "Upgrades in this version:"
 Write-Host " 1. Precise 30-min physical idle detection (no more 10-min false shutdowns!)."

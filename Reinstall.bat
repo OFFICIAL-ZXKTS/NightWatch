@@ -1,5 +1,5 @@
-@echo off
-title SleepSafe Reinstaller
+﻿@echo off
+title NightWatch Reinstaller
 cd /d "%~dp0"
 
 :: Self-elevate to Administrator if not already.
@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 
 echo ======================================================
-echo       SleepSafe - Performing Fresh Reinstall
+echo       NightWatch - Performing Fresh Reinstall
 echo ======================================================
 echo.
 

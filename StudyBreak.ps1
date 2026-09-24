@@ -1,14 +1,14 @@
-<#
+﻿<#
 .SYNOPSIS
-    SleepSafe Study Break Button (v2.0)
+    NightWatch Study Break Button (v2.0)
 .DESCRIPTION
-    1. Sets Break Mode to ACTIVE in global C:\ProgramData\SleepSafe\break_state.json.
+    1. Sets Break Mode to ACTIVE in global C:\ProgramData\NightWatch\break_state.json.
     2. Creates Desktop marker for visual feedback.
     3. Prevents accidental cancellation from double-clicking (debounce guard).
     4. Clicking again when returning toggles Break Mode OFF.
 #>
 
-$dataDir = "C:\ProgramData\SleepSafe"
+$dataDir = "C:\ProgramData\NightWatch"
 if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
@@ -57,8 +57,8 @@ if ($isActive) {
     }
 
     try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
-    $msg = "BACK TO STUDY!`n`nBreak mode is now OFF.`nSleepSafe 30-minute idle shutdown protection is ARMED."
-    $wsh.Popup($msg, 4, "SleepSafe", 64) | Out-Null
+    $msg = "BACK TO STUDY!`n`nBreak mode is now OFF.`nNightWatch 30-minute idle shutdown protection is ARMED."
+    $wsh.Popup($msg, 4, "NightWatch", 64) | Out-Null
 } else {
     # TOGGLE ON: User is taking a break
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -71,11 +71,11 @@ if ($isActive) {
 
     $markerContent = @"
 ==================================================
-           SLEEPSAFE: STUDY BREAK ACTIVE
+           NightWatch: STUDY BREAK ACTIVE
 Initiated at: $timestamp
 Status: Auto-shutdown is PAUSED. PC stays ON.
 ==================================================
-This marker signals to the SleepSafe background
+This marker signals to the NightWatch background
 sentinel that this break is intentional.
 "@
     try {
@@ -86,5 +86,5 @@ sentinel that this break is intentional.
 
     try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
     $msg = "STUDY BREAK ACTIVATED!`n`nAuto-shutdown is PAUSED.`nYour PC will NOT shut down even after 30 mins."
-    $wsh.Popup($msg, 4, "SleepSafe", 64) | Out-Null
+    $wsh.Popup($msg, 4, "NightWatch", 64) | Out-Null
 }

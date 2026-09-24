@@ -1,45 +1,45 @@
-<div align="center">
+﻿<div align="center">
 
-<img src="assets/icon.png" width="140" height="140" alt="SleepSafe Logo" />
+<img src="assets/icon.png" width="140" height="140" alt="NightWatch Logo" />
 
-# 🛡️ SleepSafe
+# ðŸ›¡ï¸ NightWatch
 
 ### *Smart Study-Break & Battery-Preserving Idle Sentinel for Windows 11*
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%7C%2010-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://microsoft.com)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?style=for-the-badge&logo=powershell&logoColor=white)](https://github.com/PowerShell/PowerShell)
 [![License](https://img.shields.io/badge/License-Apache%202.0-D22128?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-Yes-brightgreen?style=for-the-badge)](https://github.com/OFFICIAL-ZXKTS/SleepSafe)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-Yes-brightgreen?style=for-the-badge)](https://github.com/OFFICIAL-ZXKTS/NightWatch)
 
 <p align="center">
   <b>Never wake up to a dead laptop battery or lost study session again.</b><br>
   Differentiates between intentional study breaks and accidentally falling asleep.
 </p>
 
-[Key Features](#-key-features) • [How It Works](#-how-it-works) • [Desktop Icon](#-custom-desktop-icon) • [Quick Installation](#-quick-installation) • [Usage](#-usage) • [FAQ](#-frequently-asked-questions) • [Uninstallation](#-uninstallation)
+[Key Features](#-key-features) â€¢ [How It Works](#-how-it-works) â€¢ [Desktop Icon](#-custom-desktop-icon) â€¢ [Quick Installation](#-quick-installation) â€¢ [Usage](#-usage) â€¢ [FAQ](#-frequently-asked-questions) â€¢ [Uninstallation](#-uninstallation)
 
 </div>
 
 ---
 
-## ⚡ The Big Idea: A "Dead Man's Switch" for Late-Night Studying
+## âš¡ The Big Idea: A "Dead Man's Switch" for Late-Night Studying
 
-Think of **SleepSafe** as an intelligent safety switch for your **PC**:
+Think of **NightWatch** as an intelligent safety switch for your **PC**:
 
 | Your Action | Laptop's Interpretation | What Happens |
 | :--- | :--- | :--- |
-| 🟢 **You Click the Button** (or press `Ctrl+Alt+B`) | **"I am on an intentional break — DO NOT shut down my PC!"** | Sends the break signal. Your PC **stays ON and active** (does not force sleep), but the 30-minute auto-shutdown is **PAUSED**. Your downloads and music keep running safely. |
-| 🔴 **You Do NOTHING** (Accidentally fell asleep) | **"No break signal received and 30m idle — user fell asleep!"** | The background watcher activates after 30 minutes of complete inactivity and **executes a clean forced shutdown** to protect your battery and SSD. |
+| ðŸŸ¢ **You Click the Button** (or press `Ctrl+Alt+B`) | **"I am on an intentional break â€” DO NOT shut down my PC!"** | Sends the break signal. Your PC **stays ON and active** (does not force sleep), but the 30-minute auto-shutdown is **PAUSED**. Your downloads and music keep running safely. |
+| ðŸ”´ **You Do NOTHING** (Accidentally fell asleep) | **"No break signal received and 30m idle â€” user fell asleep!"** | The background watcher activates after 30 minutes of complete inactivity and **executes a clean forced shutdown** to protect your battery and SSD. |
 
 ---
 
-## 🎯 The Problem SleepSafe Solves
+## ðŸŽ¯ The Problem NightWatch Solves
 
 When working late on your PC, you face a dilemma:
 1. **If you step away for a break**: You want your computer to stay on and active without Windows auto-shutting down your 20 research tabs, background tasks, or unsaved work.
 2. **If you accidentally fall asleep**: You don't want your laptop/PC burning all night on your bed or desk, draining battery cycles, overheating, and wearing out hardware.
 
-**SleepSafe gives you the best of both worlds with zero friction.**
+**NightWatch gives you the best of both worlds with zero friction.**
 
 ```mermaid
 graph TD
@@ -57,44 +57,44 @@ graph TD
 
 ---
 
-## ✨ Key Features
+## âœ¨ Key Features
 
-- **🎯 True 30-Minute Physical Idle Tracking**: Uses Win32 `GetLastInputInfo` to measure exact keyboard and mouse idle time. Immune to Windows 11 false alarms (no more premature shutdowns at 10 minutes when your screen dims!).
-- **🔊 30-Second Warning Beep Countdown**: Plays audible warning beeps before shutting down. Moving the mouse or tapping any key during the beeps instantly aborts the shutdown!
-- **☕ Bulletproof Break Mode**: Toggle on break mode with **`Ctrl + Alt + B`** or by double-clicking the custom icon. Immune to rapid double-clicks (debounce guard), keeps PC alive throughout your break, and auto-resumes protection once you return and type.
-- **🛡️ Accidental Sleep Defense**: If you truly fall asleep with no break active, SleepSafe executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
-- **☁️ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
-- **🔋 Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
-- **⚙️ Purely Administrative**: Runs elevated in the background via Task Scheduler with zero manual maintenance needed.
+- **ðŸŽ¯ True 30-Minute Physical Idle Tracking**: Uses Win32 `GetLastInputInfo` to measure exact keyboard and mouse idle time. Immune to Windows 11 false alarms (no more premature shutdowns at 10 minutes when your screen dims!).
+- **ðŸ”Š 30-Second Warning Beep Countdown**: Plays audible warning beeps before shutting down. Moving the mouse or tapping any key during the beeps instantly aborts the shutdown!
+- **â˜• Bulletproof Break Mode**: Toggle on break mode with **`Ctrl + Alt + B`** or by double-clicking the custom icon. Immune to rapid double-clicks (debounce guard), keeps PC alive throughout your break, and auto-resumes protection once you return and type.
+- **ðŸ›¡ï¸ Accidental Sleep Defense**: If you truly fall asleep with no break active, NightWatch executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
+- **â˜ï¸ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
+- **ðŸ”‹ Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
+- **âš™ï¸ Purely Administrative**: Runs elevated in the background via Task Scheduler with zero manual maintenance needed.
 
 ---
 
-## 📦 Project Structure
+## ðŸ“¦ Project Structure
 
 ```text
-SleepSafe/
-├── assets/
-│   ├── icon.png                # High-res 3D preview logo
-│   └── icon.ico                # Windows 256x256 desktop shortcut icon
-├── StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
-├── StudyBreak.bat              # Standalone batch launcher
-├── IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
-├── SilentRunner.vbs            # Zero-window invisible launcher for Task Scheduler
-├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
-├── Reinstall.bat               # 1-click self-elevating reinstaller
-├── Uninstall-StudySafetySystem.ps1 # One-click removal script
-├── LICENSE                     # Official Apache 2.0 License
-└── README.md                   # Documentation
+NightWatch/
+â”œâ”€â”€ assets/
+â”‚   â”œâ”€â”€ icon.png                # High-res 3D preview logo
+â”‚   â””â”€â”€ icon.ico                # Windows 256x256 desktop shortcut icon
+â”œâ”€â”€ StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
+â”œâ”€â”€ StudyBreak.bat              # Standalone batch launcher
+â”œâ”€â”€ IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
+â”œâ”€â”€ SilentRunner.vbs            # Zero-window invisible launcher for Task Scheduler
+â”œâ”€â”€ Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
+â”œâ”€â”€ Reinstall.bat               # 1-click self-elevating reinstaller
+â”œâ”€â”€ Uninstall-StudySafetySystem.ps1 # One-click removal script
+â”œâ”€â”€ LICENSE                     # Official Apache 2.0 License
+â””â”€â”€ README.md                   # Documentation
 ```
 
 ---
 
-## 🎨 Custom Desktop Icon
+## ðŸŽ¨ Custom Desktop Icon
 
-SleepSafe includes a custom-designed 3D app icon representing late-night study and sleep safety:
+NightWatch includes a custom-designed 3D app icon representing late-night study and sleep safety:
 
 <div align="center">
-  <img src="assets/icon.png" width="120" height="120" alt="SleepSafe Icon" /><br>
+  <img src="assets/icon.png" width="120" height="120" alt="NightWatch Icon" /><br>
   <sub><b>assets/icon.ico</b> (256x256 high-resolution Windows icon)</sub>
 </div>
 
@@ -103,18 +103,18 @@ SleepSafe includes a custom-designed 3D app icon representing late-night study a
 - **Manual (Optional):**
   1. Right-click the **Study Break** shortcut on your Desktop $\rightarrow$ select **Properties**.
   2. Under the **Shortcut** tab, click **Change Icon...**.
-  3. Click **Browse...** $\rightarrow$ choose `assets\icon.ico` from your SleepSafe folder.
+  3. Click **Browse...** $\rightarrow$ choose `assets\icon.ico` from your NightWatch folder.
   4. Click **OK** $\rightarrow$ **Apply**.
 
 ---
 
-## 🚀 Quick Installation
+## ðŸš€ Quick Installation
 
 ### Option 1: Automated 1-Command Setup (Recommended)
 
 1. Clone or download this repository.
 2. Open **PowerShell as Administrator** (`Win + X` $\rightarrow$ **Terminal (Admin)**).
-3. Navigate to your SleepSafe folder and run:
+3. Navigate to your NightWatch folder and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -142,20 +142,20 @@ The installer will automatically:
 2. **Create the Desktop Shortcut** (optional):
    - Right-click Desktop $\rightarrow$ **New** $\rightarrow$ **Shortcut**.
    - Location: `powershell.exe`
-   - (Then set its *Target* properties → *Target* field) to:
+   - (Then set its *Target* properties â†’ *Target* field) to:
      `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<your-path>\StudyBreak.ps1"`
    - (Optional) set *Change Icon* to your cloned `assets\icon.ico`.
    - Name the shortcut `Study Break`.
 3. **Register the scheduled task**:
-   - Open `taskschd.msc` → **Create Task…** (not "Create Basic Task").
+   - Open `taskschd.msc` â†’ **Create Taskâ€¦** (not "Create Basic Task").
    - **General** tab:
-     - **Name**: `SleepSafeSentinel`
+     - **Name**: `NightWatchSentinel`
      - Select *Run only when user is logged on*
      - Check *Run with highest privileges*
-   - **Triggers** tab → **New…**:
-     - Begin the task: *On a schedule* → *Daily*
+   - **Triggers** tab â†’ **Newâ€¦**:
+     - Begin the task: *On a schedule* â†’ *Daily*
      - **Advanced settings**: check *Repeat task every:* `1 minute`, for a *duration of:* `Indefinitely`.
-   - **Actions** tab → **New…**:
+   - **Actions** tab â†’ **Newâ€¦**:
      - Action: *Start a program*
      - Program/script: `powershell.exe`
      - Add arguments:
@@ -172,7 +172,7 @@ The idle threshold itself is *not* a scheduler setting (it lives in the script a
 
 ---
 
-## 🎮 Usage
+## ðŸŽ® Usage
 
 ### Scenario A: Taking an Intentional Break
 1. When you step away from your desk, do either:
@@ -180,7 +180,7 @@ The idle threshold itself is *not* a scheduler setting (it lives in the script a
    - Press **`Ctrl + Alt + B`** on your keyboard.
 2. A popup confirms: *"Study Break Activated! Auto-shutdown is PAUSED."*
 3. Your PC stays ON normally with no forced sleep. After 30 minutes of idle time, the background watcher sees your break signal and skips shutdown.
-4. When you come back, just **start typing or moving the mouse** — SleepSafe
+4. When you come back, just **start typing or moving the mouse** â€” NightWatch
    *auto-clears* your break signal as soon as it notices activity
    (typically within ~1 minute). You can also click the button again to
    manually toggle it off.
@@ -193,7 +193,7 @@ The idle threshold itself is *not* a scheduler setting (it lives in the script a
 
 ---
 
-## ⚙️ Customization
+## âš™ï¸ Customization
 
 Want to change the idle duration (e.g. to 20 or 45 minutes)?
 
@@ -211,26 +211,26 @@ $targetIdleSeconds = 1800   # 30 minutes
 3. Save the file.
 4. Re-run `Reinstall.bat` so the new script gets picked up by the scheduled task.
 
-> **Why not the Task Scheduler GUI?** SleepSafe uses a 1-minute `TimeTrigger` (not the
+> **Why not the Task Scheduler GUI?** NightWatch uses a 1-minute `TimeTrigger` (not the
 > "On idle" trigger), so the *Conditions* tab in `taskschd.msc` does not control the
-> actual threshold — editing the script does.
+> actual threshold â€” editing the script does.
 
 ---
 
-## ❓ Frequently Asked Questions
+## â“ Frequently Asked Questions
 
 #### Q: Do I need to double-click the shortcut?
 **A:** Yes, like standard Windows desktop shortcuts, it opens with a double-click. **Pro Tip:** You can also press **`Ctrl + Alt + B`** from anywhere, or right-click the shortcut and select **Pin to Taskbar** for a single-click button!
 
 #### Q: Why Hibernate instead of Sleep?
-**A:** Standard Sleep continues drawing battery to keep RAM active (wasting 15%–30% overnight and keeping the laptop warm in a backpack). Hibernate dumps RAM state directly to your SSD and drops power consumption to **absolute zero**.
+**A:** Standard Sleep continues drawing battery to keep RAM active (wasting 15%â€“30% overnight and keeping the laptop warm in a backpack). Hibernate dumps RAM state directly to your SSD and drops power consumption to **absolute zero**.
 
 #### Q: Will this close my unsaved files if I fall asleep?
 **A:** If you fall asleep without hitting the break button, it executes `shutdown /s /f /t 0` to preserve the hardware. We strongly recommend using browser session restore (Chrome/Edge $\rightarrow$ *"Continue where you left off"*) and Auto-Save in your text editors (VS Code, Word, etc.).
 
 ---
 
-## 🗑️ Uninstallation
+## ðŸ—‘ï¸ Uninstallation
 
 To cleanly remove the shortcut and scheduled task:
 1. Open **PowerShell as Administrator**.
@@ -242,6 +242,6 @@ To cleanly remove the shortcut and scheduled task:
 
 ---
 
-## 📄 License
+## ðŸ“„ License
  
 Distributed under the **[Apache License 2.0](LICENSE)**. Includes patent grants, contributor terms, and trademark protection. Free for personal and commercial use.

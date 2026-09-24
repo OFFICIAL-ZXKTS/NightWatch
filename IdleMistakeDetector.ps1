@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    SleepSafe Automated Mistake Detector & Idle Sentinel (v2.1)
+    NightWatch Automated Mistake Detector & Idle Sentinel (v2.1)
 .DESCRIPTION
     1. Measures TRUE physical keyboard/mouse idle time via Win32 GetLastInputInfo.
     2. Only acts if computer has been idle for AT LEAST 30 MINUTES (1800 seconds).
@@ -51,7 +51,7 @@ if ($idleSeconds -lt $targetIdleSeconds) {
 # 30 MINUTES OF TRUE INACTIVITY REACHED
 # -----------------------------------------------------------------
 
-$dataDir = "C:\ProgramData\SleepSafe"
+$dataDir = "C:\ProgramData\NightWatch"
 $logFile = Join-Path $dataDir "mistake_detector.log"
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
@@ -80,6 +80,21 @@ if (-not $isBreakActive) {
     if (Test-Path $desktopMarker) {
         $isBreakActive = $true
     }
+}
+
+# CHECK 0: Fresh-boot detection.
+# Environment.TickCount is ms since the current OS session started. If uptime
+# is < 5 min and break is active, the break was set in a *previous* OS session
+# (i.e. before the most recent shutdown). The user's "intentional break"
+# intent cannot survive a shutdown â€” clear it so 30-min idle protection
+# works normally after a reboot.
+$bootThresholdMs = 300000  # 5 minutes
+if ([Environment]::TickCount -lt $bootThresholdMs -and $isBreakActive) {
+    $clearedState = @{ Active = $false; Timestamp = (Get-Date).ToString("o"); Mode = "AutoClearedAfterShutdown" }
+    $clearedState | ConvertTo-Json | Set-Content -Path $stateFile -Force
+    $isBreakActive = $false
+    $logMsg = "[$timestamp] FRESH BOOT DETECTED: PC uptime < 5 min. Previous-session break cleared automatically."
+    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
 }
 
 if ($isBreakActive) {

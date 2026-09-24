@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Uninstaller for SleepSafe
+    Uninstaller for NightWatch
 #>
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -10,8 +10,8 @@ if (-not $isAdmin) {
     exit 1
 }
 
-Write-Host "Removing SleepSafe Scheduled Tasks..." -ForegroundColor Yellow
-Unregister-ScheduledTask -TaskName "SleepSafeSentinel" -Confirm:$false -ErrorAction SilentlyContinue
+Write-Host "Removing NightWatch Scheduled Tasks..." -ForegroundColor Yellow
+Unregister-ScheduledTask -TaskName "NightWatchSentinel" -Confirm:$false -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName "IdleMistakeDetector" -Confirm:$false -ErrorAction SilentlyContinue
 
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
@@ -26,9 +26,9 @@ if (Test-Path $marker) {
     Remove-Item $marker -Force -ErrorAction SilentlyContinue
 }
 
-$dataDir = "C:\ProgramData\SleepSafe"
+$dataDir = "C:\ProgramData\NightWatch"
 if (Test-Path $dataDir) {
     Remove-Item -Path $dataDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "SleepSafe uninstalled successfully." -ForegroundColor Green
+Write-Host "NightWatch uninstalled successfully." -ForegroundColor Green
