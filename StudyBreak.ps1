@@ -1,177 +1,265 @@
 ﻿<#
 .SYNOPSIS
-    NightWatch Study Break Button (v3.0)
+    NightWatch Study Break Button (v3.1)
 .DESCRIPTION
-    1. Asks the user how long the break should last BEFORE enabling it.
-    2. Sets Break Mode ACTIVE in C:\ProgramData\NightWatch\break_state.json
-       together with an expiry time and the current OS boot-session fingerprint.
-    3. The break auto-disables itself once the chosen duration elapses,
-       so the user never has to click again to turn it off.
-    4. Creates a hidden Desktop marker for visual feedback.
-    5. Prevents accidental cancellation from double-clicking (debounce guard).
-    6. If a break is already running, offers to end it early.
+    1. Asks how long the break should last BEFORE enabling it (duration picker).
+    2. Enables the break with an explicit expiry time and a boot-session stamp.
+    3. The break auto-disables itself once the duration elapses, so there is no
+       need to click again to turn it off.
+    4. Clicking the button WHILE a break is running offers to end it early.
+    5. State lives only in C:\ProgramData\NightWatch\break_state.json.
+       Nothing is written to the Desktop.
 #>
 
 $dataDir = "C:\ProgramData\NightWatch"
 if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
-
 $stateFile = Join-Path $dataDir "break_state.json"
-$desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
-if (-not (Test-Path $desktopPath)) {
-    $desktopPath = Join-Path $env:USERPROFILE "Desktop"
-}
-$desktopMarker = Join-Path $desktopPath "break_marker.txt"
 
 # Boot-session fingerprint: uptime in ms. Resets on restart/shutdown,
 # keeps growing across sleep/hibernate.
 $bootUptimeMs = [long][Environment]::TickCount
 
+Add-Type -AssemblyName System.Windows.Forms | Out-Null
+Add-Type -AssemblyName System.Drawing | Out-Null
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+# Palette
+$bg        = [System.Drawing.Color]::FromArgb(24, 26, 33)
+$panel     = [System.Drawing.Color]::FromArgb(34, 37, 46)
+$fg        = [System.Drawing.Color]::FromArgb(238, 240, 245)
+$muted     = [System.Drawing.Color]::FromArgb(150, 156, 170)
+$accent    = [System.Drawing.Color]::FromArgb(94, 160, 255)
+$accentDim = [System.Drawing.Color]::FromArgb(60, 96, 150)
+$danger    = [System.Drawing.Color]::FromArgb(226, 96, 96)
+$line      = [System.Drawing.Color]::FromArgb(58, 62, 74)
+
+function New-Label {
+    param($Text, $Size, $Color, $Bold, $X, $Y, $W = 380)
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $Text
+    $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
+    $l.Font = New-Object System.Drawing.Font("Segoe UI", $Size, $style)
+    $l.ForeColor = $Color
+    $l.Location = New-Object System.Drawing.Point($X, $Y)
+    $l.Size = New-Object System.Drawing.Size($W, 26)
+    return $l
+}
+
 # -----------------------------------------------------------------
 # Read current state, applying the SAME validity rules as the detector
-# so the button never shows a stale break.
+# so the button never offers to cancel a break that is already gone.
 # -----------------------------------------------------------------
 $isActive = $false
-$lastClick = [DateTime]::MinValue
+$expiresAt = $null
+$durationMinutes = 0
 
 if (Test-Path $stateFile) {
     try {
         $json = Get-Content $stateFile -Raw | ConvertFrom-Json
         $isActive = [bool]$json.Active
-        if ($json.Timestamp) {
-            $lastClick = [DateTime]$json.Timestamp
-        }
         if ($isActive) {
-            # Stale across a restart?
+            $valid = $true
+            # Break must come from the current boot session.
             if ($null -eq $json.BootUptimeMs -or [long]$json.BootUptimeMs -gt $bootUptimeMs) {
-                $isActive = $false
+                $valid = $false
             }
-            # Expired?
-            if ($isActive -and $json.ExpiresAt) {
-                if ((Get-Date) -gt ([DateTime]$json.ExpiresAt)) {
-                    $isActive = $false
-                }
+            # And must not have expired. Checked independently of the boot test
+            # so a restart and an expiry are both caught regardless of order.
+            if ($valid -and $json.ExpiresAt) {
+                try {
+                    if ((Get-Date) -gt ([DateTime]$json.ExpiresAt)) { $valid = $false }
+                } catch { $valid = $false }
+            }
+            $isActive = $valid
+            if ($isActive) {
+                if ($json.DurationMinutes) { $durationMinutes = [int]$json.DurationMinutes }
+                if ($json.ExpiresAt) { try { $expiresAt = [DateTime]$json.ExpiresAt } catch {} }
             }
         }
     } catch {}
 }
 
-function Clear-BreakState {
-    param($Reason)
+function Save-Inactive {
     $state = @{
         Active = $false
         Timestamp = (Get-Date).ToString("o")
         Mode = "Working"
     } | ConvertTo-Json
     Set-Content -Path $stateFile -Value $state -Force
-    if (Test-Path $desktopMarker) {
-        Remove-Item -Path $desktopMarker -Force -ErrorAction SilentlyContinue
-    }
 }
 
 # -----------------------------------------------------------------
-# If a valid break is already running: offer to end it early.
+# BREAK IS ALREADY RUNNING -> offer to end it early
 # -----------------------------------------------------------------
 if ($isActive) {
-    Add-Type -AssemblyName System.Windows.Forms | Out-Null
-    $result = [System.Windows.Forms.MessageBox]::Show(
-        "A study break is currently ACTIVE.`n`nEnd it now and re-arm idle shutdown protection?",
-        "NightWatch", "YesNo", "Question")
-    if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-        Clear-BreakState -Reason "EndedEarly"
+    if (-not $expiresAt) { $expiresAt = (Get-Date).AddMinutes($durationMinutes) }
+    $remaining = [int][Math]::Ceiling(($expiresAt - (Get-Date)).TotalMinutes)
+    if ($remaining -lt 0) { $remaining = 0 }
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = "NightWatch"
+    $dlg.ClientSize = New-Object System.Drawing.Size(420, 210)
+    $dlg.StartPosition = "CenterScreen"
+    $dlg.FormBorderStyle = "FixedDialog"
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    $dlg.TopMost = $true
+    $dlg.BackColor = $bg
+    $dlg.ForeColor = $fg
+
+    $dlg.Controls.Add((New-Label "STUDY BREAK IS ACTIVE" 10 $muted $true 24 22))
+    $dlg.Controls.Add((New-Label "Auto-shutdown is paused." 13 $fg $false 24 46))
+    $dlg.Controls.Add((New-Label "Ends at  $($expiresAt.ToString('HH:mm:ss'))" 11 $accent $true 24 78))
+    $dlg.Controls.Add((New-Label "$durationMinutes min break  |  $remaining min remaining" 10 $muted $false 24 104))
+
+    $btnKeep = New-Object System.Windows.Forms.Button
+    $btnKeep.Text = "Keep break"
+    $btnKeep.Size = New-Object System.Drawing.Size(170, 40)
+    $btnKeep.Location = New-Object System.Drawing.Point(24, 150)
+    $btnKeep.FlatStyle = "Flat"
+    $btnKeep.FlatAppearance.BorderSize = 1
+    $btnKeep.FlatAppearance.BorderColor = $line
+    $btnKeep.BackColor = $panel
+    $btnKeep.ForeColor = $fg
+    $btnKeep.Add_Click({ $script:EndNow = $false; $dlg.Close() })
+    $dlg.Controls.Add($btnKeep)
+
+    $btnEnd = New-Object System.Windows.Forms.Button
+    $btnEnd.Text = "End break now"
+    $btnEnd.Size = New-Object System.Drawing.Size(170, 40)
+    $btnEnd.Location = New-Object System.Drawing.Point(226, 150)
+    $btnEnd.FlatStyle = "Flat"
+    $btnEnd.FlatAppearance.BorderSize = 0
+    $btnEnd.BackColor = $danger
+    $btnEnd.ForeColor = $fg
+    $btnEnd.Add_Click({ $script:EndNow = $true; $dlg.Close() })
+    $dlg.Controls.Add($btnEnd)
+
+    $script:EndNow = $false
+    $dlg.AcceptButton = $btnEnd
+    $dlg.CancelButton = $btnKeep
+    $dlg.ShowDialog() | Out-Null
+    $dlg.Dispose()
+
+    if ($script:EndNow) {
+        Save-Inactive
         try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
         [System.Windows.Forms.MessageBox]::Show(
-            "Break ended.`n`n30-minute idle shutdown protection is ARMED.",
+            "Break ended early.`n`n30-minute idle shutdown protection is ARMED.",
             "NightWatch", "OK", "Information") | Out-Null
     }
     exit 0
 }
 
 # -----------------------------------------------------------------
-# Ask for the break duration BEFORE enabling anything.
+# DURATION PICKER
 # -----------------------------------------------------------------
-Add-Type -AssemblyName System.Windows.Forms | Out-Null
-Add-Type -AssemblyName System.Drawing | Out-Null
-
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "NightWatch - Study Break"
-$form.Size = New-Object System.Drawing.Size(400, 320)
+$form.ClientSize = New-Object System.Drawing.Size(420, 300)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 $form.TopMost = $true
+$form.BackColor = $bg
+$form.ForeColor = $fg
 
-$lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = "How long is your study break?"
-$lbl.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-$lbl.AutoSize = $true
-$lbl.Location = New-Object System.Drawing.Point(18, 18)
-$form.Controls.Add($lbl)
+$form.Controls.Add((New-Label "How long is your study break?" 15 $fg $true 24 20))
+$form.Controls.Add((New-Label "Auto-shutdown is paused for this long, then re-arms by itself." 9 $muted $false 24 50))
 
-$sub = New-Object System.Windows.Forms.Label
-$sub.Text = "Auto-shutdown is paused for this long, then re-arms automatically."
-$sub.AutoSize = $true
-$sub.Location = New-Object System.Drawing.Point(18, 48)
-$form.Controls.Add($sub)
+$script:ChosenMinutes = 0
+$script:Preset = 30
 
-# Lay the presets out in a row.
+# Live preview label
+$preview = New-Label "" 10 $accent $true 24 132
+$form.Controls.Add($preview)
+
+function Update-Preview {
+    param([int]$Minutes)
+    $end = (Get-Date).AddMinutes($Minutes)
+    $preview.Text = "Auto-off at  $($end.ToString('HH:mm:ss'))    ($Minutes min from now)"
+}
+
+# Preset buttons
 $presets = @(15, 30, 40, 60)
-$x = 18
+$x = 24
 foreach ($m in $presets) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = "$m min"
     $b.Tag = $m
-    $b.Size = New-Object System.Drawing.Size(80, 34)
-    $b.Location = New-Object System.Drawing.Point($x, 80)
-    $b.Add_Click({ $script:ChosenMinutes = [int]$this.Tag; $form.Close() })
+    $b.Size = New-Object System.Drawing.Size(84, 42)
+    $b.Location = New-Object System.Drawing.Point($x, 78)
+    $b.FlatStyle = "Flat"
+    $b.FlatAppearance.BorderSize = 1
+    $b.FlatAppearance.BorderColor = $accent
+    $b.BackColor = $panel
+    $b.ForeColor = $fg
+    $b.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $b.Add_Click({
+        $script:ChosenMinutes = [int]$this.Tag
+        Update-Preview -Minutes $script:ChosenMinutes
+        $form.Close()
+    })
     $form.Controls.Add($b)
-    $x += 88
+    $x += 92
 }
 
-$lbl2 = New-Object System.Windows.Forms.Label
-$lbl2.Text = "Or a custom duration (minutes):"
-$lbl2.AutoSize = $true
-$lbl2.Location = New-Object System.Drawing.Point(18, 130)
-$form.Controls.Add($lbl2)
+$form.Controls.Add((New-Label "Custom (1-1440 min)" 9 $muted $false 24 168))
 
 $num = New-Object System.Windows.Forms.NumericUpDown
 $num.Minimum = 1
 $num.Maximum = 1440
-$num.Value = 30
-$num.Size = New-Object System.Drawing.Size(100, 26)
-$num.Location = New-Object System.Drawing.Point(18, 152)
+$num.Value = 45
+$num.Size = New-Object System.Drawing.Size(110, 28)
+$num.Location = New-Object System.Drawing.Point(24, 192)
+$num.BackColor = $panel
+$num.ForeColor = $fg
 $form.Controls.Add($num)
 
-$useCustom = New-Object System.Windows.Forms.Button
-$useCustom.Text = "Start custom break"
-$useCustom.Size = New-Object System.Drawing.Size(180, 32)
-$useCustom.Location = New-Object System.Drawing.Point(140, 149)
-$useCustom.Add_Click({ $script:ChosenMinutes = [int]$num.Value; $form.Close() })
-$form.Controls.Add($useCustom)
+$btnStartCustom = New-Object System.Windows.Forms.Button
+$btnStartCustom.Text = "Start custom break"
+$btnStartCustom.Size = New-Object System.Drawing.Size(170, 30)
+$btnStartCustom.Location = New-Object System.Drawing.Point(150, 191)
+$btnStartCustom.FlatStyle = "Flat"
+$btnStartCustom.FlatAppearance.BorderSize = 1
+$btnStartCustom.FlatAppearance.BorderColor = $accent
+$btnStartCustom.BackColor = $panel
+$btnStartCustom.ForeColor = $fg
+$btnStartCustom.Add_Click({
+    $script:ChosenMinutes = [int]$num.Value
+    $form.Close()
+})
+$form.Controls.Add($btnStartCustom)
 
-$cancel = New-Object System.Windows.Forms.Button
-$cancel.Text = "Cancel"
-$cancel.Size = New-Object System.Drawing.Size(120, 32)
-$cancel.Location = New-Object System.Drawing.Point(140, 196)
-$cancel.Add_Click({ $script:ChosenMinutes = 0; $form.Close() })
-$form.Controls.Add($cancel)
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Text = "Cancel"
+$btnCancel.Size = New-Object System.Drawing.Size(120, 34)
+$btnCancel.Location = New-Object System.Drawing.Point(276, 244)
+$btnCancel.FlatStyle = "Flat"
+$btnCancel.FlatAppearance.BorderSize = 1
+$btnCancel.FlatAppearance.BorderColor = $line
+$btnCancel.BackColor = $panel
+$btnCancel.ForeColor = $muted
+$btnCancel.Add_Click({ $script:ChosenMinutes = 0; $form.Close() })
+$form.Controls.Add($btnCancel)
 
-$script:ChosenMinutes = 0
-$form.AcceptButton = $useCustom
-$form.CancelButton = $cancel
+$form.AcceptButton = $btnStartCustom
+$form.CancelButton = $btnCancel
+Update-Preview -Minutes 30
 $form.ShowDialog() | Out-Null
 $form.Dispose()
 
 $minutes = [int]$script:ChosenMinutes
 if ($minutes -le 0) {
-    # Cancelled: nothing was changed.
     exit 0
 }
 
 # -----------------------------------------------------------------
-# Enable the break with an explicit expiry and boot fingerprint.
+# Enable the break with an explicit expiry and boot fingerprint
 # -----------------------------------------------------------------
 $now = Get-Date
 $expiresAt = $now.AddMinutes($minutes)
@@ -186,24 +274,33 @@ $state = @{
 } | ConvertTo-Json
 Set-Content -Path $stateFile -Value $state -Force
 
-$markerContent = @"
-==================================================
-        NIGHTWATCH: STUDY BREAK ACTIVE
-Started at   : $($now.ToString("yyyy-MM-dd HH:mm:ss"))
-Duration     : $minutes minutes
-Auto-off at  : $($expiresAt.ToString("yyyy-MM-dd HH:mm:ss"))
-Status       : Auto-shutdown is PAUSED until then.
-==================================================
-This break expires automatically. No need to toggle off.
-Restarting or shutting down the PC cancels this break.
-"@
-try {
-    Set-Content -Path $desktopMarker -Value $markerContent -Force
-    # Hide the marker so it doesn't clutter the user's Desktop.
-    (Get-Item -Path $desktopMarker -Force).Attributes = 'Hidden'
-} catch {}
-
 try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
-[System.Windows.Forms.MessageBox]::Show(
-    "STUDY BREAK ACTIVATED!`n`nDuration: $minutes minutes`n`nAuto-shutdown is PAUSED until $($expiresAt.ToString("HH:mm:ss")).`nIt will turn itself off - no need to click again.",
-    "NightWatch", "OK", "Information") | Out-Null
+
+$done = New-Object System.Windows.Forms.Form
+$done.Text = "NightWatch"
+$done.ClientSize = New-Object System.Drawing.Size(420, 180)
+$done.StartPosition = "CenterScreen"
+$done.FormBorderStyle = "FixedDialog"
+$done.MaximizeBox = $false
+$done.MinimizeBox = $false
+$done.TopMost = $true
+$done.BackColor = $bg
+$done.ForeColor = $fg
+$done.Controls.Add((New-Label "STUDY BREAK ACTIVATED" 15 $accent $true 24 24))
+$done.Controls.Add((New-Label "$minutes minute break - auto-shutdown is PAUSED." 11 $fg $false 24 62))
+$done.Controls.Add((New-Label "Auto-off at $($expiresAt.ToString('HH:mm:ss'))" 12 $fg $true 24 90))
+$done.Controls.Add((New-Label "It turns itself off - no need to click again." 9 $muted $false 24 120))
+$btnOk = New-Object System.Windows.Forms.Button
+$btnOk.Text = "Got it"
+$btnOk.Size = New-Object System.Drawing.Size(120, 34)
+$btnOk.Location = New-Object System.Drawing.Point(276, 134)
+$btnOk.FlatStyle = "Flat"
+$btnOk.FlatAppearance.BorderSize = 0
+$btnOk.BackColor = $accent
+$btnOk.ForeColor = $fg
+$btnOk.Add_Click({ $done.Close() })
+$done.Controls.Add($btnOk)
+$done.AcceptButton = $btnOk
+$done.CancelButton = $btnOk
+$done.ShowDialog() | Out-Null
+$done.Dispose()

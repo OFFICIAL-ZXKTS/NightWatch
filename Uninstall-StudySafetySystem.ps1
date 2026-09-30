@@ -14,6 +14,8 @@ Write-Host "Removing NightWatch Scheduled Tasks..." -ForegroundColor Yellow
 Unregister-ScheduledTask -TaskName "NightWatchSentinel" -Confirm:$false -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName "IdleMistakeDetector" -Confirm:$false -ErrorAction SilentlyContinue
 
+# Clean up the legacy break_marker.txt if an older version left one behind.
+# Current versions never create it, so this is a no-op for fresh installs.
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
 $shortcut = Join-Path $desktopPath "Study Break.lnk"
 if (Test-Path $shortcut) {
@@ -21,9 +23,13 @@ if (Test-Path $shortcut) {
     Write-Host "Removed Desktop shortcut." -ForegroundColor Green
 }
 
-$marker = Join-Path $desktopPath "break_marker.txt"
-if (Test-Path $marker) {
-    Remove-Item $marker -Force -ErrorAction SilentlyContinue
+foreach ($markerDir in @($desktopPath, (Join-Path $env:USERPROFILE "Desktop"), $(if ($env:OneDrive) { Join-Path $env:OneDrive "Desktop" }))) {
+    if (-not $markerDir) { continue }
+    $marker = Join-Path $markerDir "break_marker.txt"
+    if (Test-Path $marker) {
+        Remove-Item $marker -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed legacy marker: $marker" -ForegroundColor Green
+    }
 }
 
 $dataDir = "C:\ProgramData\NightWatch"
