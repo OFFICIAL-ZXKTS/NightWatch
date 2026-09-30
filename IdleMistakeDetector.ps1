@@ -74,39 +74,59 @@ if (Test-Path $stateFile) {
 }
 
 if ($json -and [bool]$json.Active) {
+    $isBreakActive = $true
 
     # (a) Boot-session check. Stored uptime greater than current uptime means
     # the machine rebooted after the break was created, so it is stale.
     # Sleep/hibernate keep uptime monotonic, so those breaks stay valid.
-    if ($null -ne $json.BootUptimeMs) {
+    if ($null -eq $json.BootUptimeMs) {
+        # Legacy state with no boot fingerprint: cannot prove it is current.
+        $isBreakActive = $false
+        $clearReason = "Break state predates boot-session tracking. Break discarded."
+    } else {
         $storedUptime = [long]$json.BootUptimeMs
         if ($storedUptime -gt $currentUptimeMs) {
             $isBreakActive = $false
             $clearReason = "PC was restarted or shut down since this break was set. Break discarded."
         }
-    } else {
-        # Legacy state with no boot fingerprint: cannot prove it is current.
-        $isBreakActive = $false
-        $clearReason = "Break state predates boot-session tracking. Break discarded."
     }
 
-    # (b) Duration expiry check.
-    if ($isBreakActive -and $json.ExpiresAt) {
+    # (b) Duration expiry check. Evaluated independently of (a) so a break is
+    # still cleared for expiry even if the boot check already flagged it.
+    if ($json.ExpiresAt) {
         try {
-            if ((Get-Date) -gt ([DateTime]$json.ExpiresAt)) {
+            $expiry = [DateTime]$json.ExpiresAt
+            if ((Get-Date) -gt $expiry) {
                 $isBreakActive = $false
-                $clearReason = "Break duration of $($json.DurationMinutes) min has elapsed. Auto-disabled."
+                if (-not $clearReason) {
+                    $clearReason = "Break duration of $($json.DurationMinutes) min has elapsed. Auto-disabled."
+                }
             }
-        } catch {}
+        } catch {
+            # Unparseable expiry: treat the break as expired rather than trust it.
+            $isBreakActive = $false
+            if (-not $clearReason) {
+                $clearReason = "Break expiry time unreadable. Break discarded for safety."
+            }
+        }
     }
 }
 
 # Persist the cleared state once, so later runs agree and the toggle button
 # reflects reality. Guarded so this only happens on the transition.
+# NOTE: the state write and the log append are deliberately SEPARATE try blocks.
+# The log lives in ProgramData and can be locked/unwritable (e.g. while another
+# instance holds it). If both shared one try, a failing log append would abort
+# the block BEFORE the state was flushed, leaving a stale break "active" forever
+# and silently swallowed by the catch.
 if ($clearReason -and (Test-Path $stateFile)) {
     try {
         $cleared = @{ Active = $false; Timestamp = (Get-Date).ToString("o"); Mode = "AutoCleared" }
         $cleared | ConvertTo-Json | Set-Content -Path $stateFile -Force
+    } catch {
+        # Could not persist; treat the break as inactive for this run anyway.
+    }
+    try {
         Add-Content -Path $logFile -Value "[$timestamp] BREAK CLEARED: $clearReason" -ErrorAction SilentlyContinue
     } catch {}
 }

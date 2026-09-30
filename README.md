@@ -56,7 +56,7 @@ When working late on your PC, you face a dilemma:
 graph TD
     A[You Step Away From PC] --> B{Did you click 'Study Break'?}
     
-    B -- YES: 'Don't shut down, I'm on break!' --> C[Break signal active on Desktop]
+    B -- YES: 'Don't shut down, I'm on break!' --> C[Break recorded with a duration]
     C --> D[PC stays ON normally: No forced sleep!]
     D --> E[After 30 mins idle -> Watcher sees signal]
     E --> F[Auto-Shutdown is SKIPPED -> PC stays safe!]
@@ -75,7 +75,7 @@ graph TD
 - **⏱️ Timed Breaks That End Themselves**: Press **`Ctrl + Alt + B`** (or double-click the icon) and a dialog asks how long your break lasts — pick **15 / 30 / 40 / 60 min** or type any custom value. Auto-shutdown stays paused for exactly that long, then **re-arms automatically**. You never have to click again to turn it off.
 - **🔁 Boot-Session Aware Breaks**: Every break is stamped with the current OS boot session. **Restarting or shutting down the PC cancels the break** (a break can't survive a reboot you didn't plan), while **sleep and hibernate preserve it**, since those keep the same boot session.
 - **🛡️ Accidental Sleep Defense**: If you truly fall asleep with no break active, NightWatch executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
-- **☁️ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
+- **🔒 No Desktop Writes**: All break state lives in `C:\ProgramData\NightWatch\break_state.json`, so the sentinel never modifies Desktop files and cannot trigger icon refresh or flicker.
 - **🔋 Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
 - **⚙️ Purely Administrative & 100% Silent**: Runs elevated in the background via `SilentRunner.vbs` with zero console pop-ups, zero focus stealing, and zero desktop flickering.
 
@@ -188,8 +188,10 @@ The installer will automatically:
    the active break and skips shutdown for the whole duration.
 5. **Nothing else to do.** When the duration elapses, the break turns itself
    **OFF** and the 30-minute idle protection is armed again automatically.
-6. If you return early and want the protection back sooner, just press the
-   button again and confirm **Yes** to end the break.
+6. If you return early and want protection back sooner, press the button again.
+   A dialog shows the break's end time and remaining minutes, with two choices:
+   **End break now** (re-arms protection immediately) or **Keep break** (let it
+   finish on its own). Nothing changes unless you pick one.
 
 ### Scenario B: Accidentally Falling Asleep
 1. You fall asleep while studying without hitting the break button.
@@ -219,6 +221,13 @@ in between and the break is stale.
 > **Note:** a break is not cancelled by restarting the PC — it is *discarded*,
 > which is the same practical effect. Your idle protection returns to normal
 > after the next reboot, with no manual cleanup required.
+
+### Nothing touches your Desktop
+
+Break state lives entirely in `C:\ProgramData\NightWatch\break_state.json`.
+Earlier versions dropped a `break_marker.txt` on the Desktop; that is gone, so
+the sentinel no longer modifies Desktop files and cannot trigger a desktop
+icon refresh or flicker.
 
 ---
 
