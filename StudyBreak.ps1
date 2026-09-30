@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    NightWatch Study Break Button (v3.1)
+    NightWatch Study Break Button (v3.2)
 .DESCRIPTION
     1. Asks how long the break should last BEFORE enabling it (duration picker).
     2. Enables the break with an explicit expiry time and a boot-session stamp.
@@ -32,20 +32,69 @@ $panel     = [System.Drawing.Color]::FromArgb(34, 37, 46)
 $fg        = [System.Drawing.Color]::FromArgb(238, 240, 245)
 $muted     = [System.Drawing.Color]::FromArgb(150, 156, 170)
 $accent    = [System.Drawing.Color]::FromArgb(94, 160, 255)
-$accentDim = [System.Drawing.Color]::FromArgb(60, 96, 150)
 $danger    = [System.Drawing.Color]::FromArgb(226, 96, 96)
 $line      = [System.Drawing.Color]::FromArgb(58, 62, 74)
 
+# Layout constants
+$PAD      = 24
+$FORM_W   = 440
+$LBL_H    = 26
+$BTN_H    = 40
+$ROW_GAP  = 10
+
+# Build a form with DPI scaling disabled so nothing is rescaled twice.
+function New-BaseForm {
+    param([string]$Title, [int]$Height)
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = $Title
+    $f.ClientSize = New-Object System.Drawing.Size($FORM_W, $Height)
+    $f.StartPosition = "CenterScreen"
+    $f.FormBorderStyle = "FixedDialog"
+    $f.MaximizeBox = $false
+    $f.MinimizeBox = $false
+    $f.TopMost = $true
+    $f.BackColor = $bg
+    $f.ForeColor = $fg
+    # Critical: without this, Windows rescales every coordinate on a
+    # non-100% DPI display and controls end up overlapping or misaligned.
+    $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    return $f
+}
+
+# Label with a height derived from the font, so tall text cannot overflow
+# into whatever sits below it.
 function New-Label {
-    param($Text, $Size, $Color, $Bold, $X, $Y, $W = 380)
+    param($Text, [float]$Size, $Color, [bool]$Bold, [int]$X, [int]$Y, [int]$W = ($FORM_W - 2 * $PAD))
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $Text
     $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
     $l.Font = New-Object System.Drawing.Font("Segoe UI", $Size, $style)
     $l.ForeColor = $Color
+    $l.BackColor = $bg
     $l.Location = New-Object System.Drawing.Point($X, $Y)
-    $l.Size = New-Object System.Drawing.Size($W, 26)
+    # ~1.65 line height plus padding is enough for Segoe UI at any of our sizes.
+    $h = [int][Math]::Ceiling($Size * 1.65) + 6
+    $l.Size = New-Object System.Drawing.Size($W, $h)
     return $l
+}
+
+function New-Button {
+    param($Text, $Color, $BorderColor, [int]$X, [int]$Y, [int]$W = 0, [bool]$AccentFont = $false)
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $Text
+    $b.Height = $BTN_H
+    if ($W -gt 0) { $b.Width = $W }
+    $b.Location = New-Object System.Drawing.Point($X, $Y)
+    $b.FlatStyle = "Flat"
+    $b.FlatAppearance.BorderSize = 1
+    $b.FlatAppearance.BorderColor = $(if ($BorderColor) { $BorderColor } else { $Color })
+    $b.BackColor = $Color
+    $b.ForeColor = $fg
+    $style = if ($AccentFont) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
+    $b.Font = New-Object System.Drawing.Font("Segoe UI", 10, $style)
+    $b.UseVisualStyleBackColor = $false
+    $b.AutoSize = $false
+    return $b
 }
 
 # -----------------------------------------------------------------
@@ -99,42 +148,21 @@ if ($isActive) {
     $remaining = [int][Math]::Ceiling(($expiresAt - (Get-Date)).TotalMinutes)
     if ($remaining -lt 0) { $remaining = 0 }
 
-    $dlg = New-Object System.Windows.Forms.Form
-    $dlg.Text = "NightWatch"
-    $dlg.ClientSize = New-Object System.Drawing.Size(420, 210)
-    $dlg.StartPosition = "CenterScreen"
-    $dlg.FormBorderStyle = "FixedDialog"
-    $dlg.MaximizeBox = $false
-    $dlg.MinimizeBox = $false
-    $dlg.TopMost = $true
-    $dlg.BackColor = $bg
-    $dlg.ForeColor = $fg
+    $dlg = New-BaseForm -Title "NightWatch" -Height 236
+    $y = $PAD
 
-    $dlg.Controls.Add((New-Label "STUDY BREAK IS ACTIVE" 10 $muted $true 24 22))
-    $dlg.Controls.Add((New-Label "Auto-shutdown is paused." 13 $fg $false 24 46))
-    $dlg.Controls.Add((New-Label "Ends at  $($expiresAt.ToString('HH:mm:ss'))" 11 $accent $true 24 78))
-    $dlg.Controls.Add((New-Label "$durationMinutes min break  |  $remaining min remaining" 10 $muted $false 24 104))
+    $dlg.Controls.Add((New-Label "STUDY BREAK IS ACTIVE" 10 $muted $true $PAD $y)); $y += 24
+    $dlg.Controls.Add((New-Label "Auto-shutdown is paused." 13 $fg $false $PAD $y)); $y += 30
+    $dlg.Controls.Add((New-Label "Ends at  $($expiresAt.ToString('HH:mm:ss'))" 12 $accent $true $PAD $y)); $y += 28
+    $dlg.Controls.Add((New-Label "$durationMinutes min break  |  $remaining min remaining" 10 $muted $false $PAD $y)); $y += 30
 
-    $btnKeep = New-Object System.Windows.Forms.Button
-    $btnKeep.Text = "Keep break"
-    $btnKeep.Size = New-Object System.Drawing.Size(170, 40)
-    $btnKeep.Location = New-Object System.Drawing.Point(24, 150)
-    $btnKeep.FlatStyle = "Flat"
-    $btnKeep.FlatAppearance.BorderSize = 1
-    $btnKeep.FlatAppearance.BorderColor = $line
-    $btnKeep.BackColor = $panel
-    $btnKeep.ForeColor = $fg
+    $btnW = [int](($FORM_W - 3 * $PAD) / 2)
+    $btnKeep = New-Button "Keep break" $panel $line $PAD $y $btnW
+    $btnKeep.ForeColor = $muted
     $btnKeep.Add_Click({ $script:EndNow = $false; $dlg.Close() })
     $dlg.Controls.Add($btnKeep)
 
-    $btnEnd = New-Object System.Windows.Forms.Button
-    $btnEnd.Text = "End break now"
-    $btnEnd.Size = New-Object System.Drawing.Size(170, 40)
-    $btnEnd.Location = New-Object System.Drawing.Point(226, 150)
-    $btnEnd.FlatStyle = "Flat"
-    $btnEnd.FlatAppearance.BorderSize = 0
-    $btnEnd.BackColor = $danger
-    $btnEnd.ForeColor = $fg
+    $btnEnd = New-Button "End break now" $danger $danger ($PAD + $btnW + $PAD) $y $btnW
     $btnEnd.Add_Click({ $script:EndNow = $true; $dlg.Close() })
     $dlg.Controls.Add($btnEnd)
 
@@ -157,25 +185,16 @@ if ($isActive) {
 # -----------------------------------------------------------------
 # DURATION PICKER
 # -----------------------------------------------------------------
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "NightWatch - Study Break"
-$form.ClientSize = New-Object System.Drawing.Size(420, 300)
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
-$form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
-$form.BackColor = $bg
-$form.ForeColor = $fg
-
-$form.Controls.Add((New-Label "How long is your study break?" 15 $fg $true 24 20))
-$form.Controls.Add((New-Label "Auto-shutdown is paused for this long, then re-arms by itself." 9 $muted $false 24 50))
+$form = New-BaseForm -Title "NightWatch - Study Break" -Height 300
+$y = $PAD
+$form.Controls.Add((New-Label "How long is your study break?" 15 $fg $true $PAD $y)); $y += 32
+$form.Controls.Add((New-Label "Paused for this long, then re-arms by itself." 9 $muted $false $PAD $y)); $y += 28
 
 $script:ChosenMinutes = 0
-$script:Preset = 30
 
-# Live preview label
-$preview = New-Label "" 10 $accent $true 24 132
+# Live preview, placed under the preset row with room to breathe.
+$previewY = $y + $BTN_H + $ROW_GAP
+$preview = New-Label "" 10 $accent $true $PAD $previewY
 $form.Controls.Add($preview)
 
 function Update-Preview {
@@ -184,65 +203,44 @@ function Update-Preview {
     $preview.Text = "Auto-off at  $($end.ToString('HH:mm:ss'))    ($Minutes min from now)"
 }
 
-# Preset buttons
+# Preset buttons in one row
 $presets = @(15, 30, 40, 60)
-$x = 24
+$gap = 8
+$btnW = [int](($FORM_W - 2 * $PAD - $gap * ($presets.Count - 1)) / $presets.Count)
+$x = $PAD
 foreach ($m in $presets) {
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = "$m min"
+    $b = New-Button "$m min" $panel $accent $x $y $btnW $true
     $b.Tag = $m
-    $b.Size = New-Object System.Drawing.Size(84, 42)
-    $b.Location = New-Object System.Drawing.Point($x, 78)
-    $b.FlatStyle = "Flat"
-    $b.FlatAppearance.BorderSize = 1
-    $b.FlatAppearance.BorderColor = $accent
-    $b.BackColor = $panel
-    $b.ForeColor = $fg
-    $b.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $b.Add_Click({
         $script:ChosenMinutes = [int]$this.Tag
-        Update-Preview -Minutes $script:ChosenMinutes
         $form.Close()
     })
     $form.Controls.Add($b)
-    $x += 92
+    $x += $btnW + $gap
 }
+$y = $previewY + 30
 
-$form.Controls.Add((New-Label "Custom (1-1440 min)" 9 $muted $false 24 168))
+$form.Controls.Add((New-Label "Custom (1-1440 min)" 9 $muted $false $PAD $y)); $y += 22
 
 $num = New-Object System.Windows.Forms.NumericUpDown
 $num.Minimum = 1
 $num.Maximum = 1440
 $num.Value = 45
-$num.Size = New-Object System.Drawing.Size(110, 28)
-$num.Location = New-Object System.Drawing.Point(24, 192)
+$num.Size = New-Object System.Drawing.Size(110, $BTN_H)
+$num.Location = New-Object System.Drawing.Point($PAD, $y)
 $num.BackColor = $panel
 $num.ForeColor = $fg
 $form.Controls.Add($num)
 
-$btnStartCustom = New-Object System.Windows.Forms.Button
-$btnStartCustom.Text = "Start custom break"
-$btnStartCustom.Size = New-Object System.Drawing.Size(170, 30)
-$btnStartCustom.Location = New-Object System.Drawing.Point(150, 191)
-$btnStartCustom.FlatStyle = "Flat"
-$btnStartCustom.FlatAppearance.BorderSize = 1
-$btnStartCustom.FlatAppearance.BorderColor = $accent
-$btnStartCustom.BackColor = $panel
-$btnStartCustom.ForeColor = $fg
+$btnStartCustom = New-Button "Start custom break" $panel $accent ($PAD + 118) ($y - 6) 190
 $btnStartCustom.Add_Click({
     $script:ChosenMinutes = [int]$num.Value
     $form.Close()
 })
 $form.Controls.Add($btnStartCustom)
+$y += $BTN_H + $ROW_GAP
 
-$btnCancel = New-Object System.Windows.Forms.Button
-$btnCancel.Text = "Cancel"
-$btnCancel.Size = New-Object System.Drawing.Size(120, 34)
-$btnCancel.Location = New-Object System.Drawing.Point(276, 244)
-$btnCancel.FlatStyle = "Flat"
-$btnCancel.FlatAppearance.BorderSize = 1
-$btnCancel.FlatAppearance.BorderColor = $line
-$btnCancel.BackColor = $panel
+$btnCancel = New-Button "Cancel" $panel $line ($FORM_W - $PAD - 130) $y 130
 $btnCancel.ForeColor = $muted
 $btnCancel.Add_Click({ $script:ChosenMinutes = 0; $form.Close() })
 $form.Controls.Add($btnCancel)
@@ -276,28 +274,14 @@ Set-Content -Path $stateFile -Value $state -Force
 
 try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
 
-$done = New-Object System.Windows.Forms.Form
-$done.Text = "NightWatch"
-$done.ClientSize = New-Object System.Drawing.Size(420, 180)
-$done.StartPosition = "CenterScreen"
-$done.FormBorderStyle = "FixedDialog"
-$done.MaximizeBox = $false
-$done.MinimizeBox = $false
-$done.TopMost = $true
-$done.BackColor = $bg
-$done.ForeColor = $fg
-$done.Controls.Add((New-Label "STUDY BREAK ACTIVATED" 15 $accent $true 24 24))
-$done.Controls.Add((New-Label "$minutes minute break - auto-shutdown is PAUSED." 11 $fg $false 24 62))
-$done.Controls.Add((New-Label "Auto-off at $($expiresAt.ToString('HH:mm:ss'))" 12 $fg $true 24 90))
-$done.Controls.Add((New-Label "It turns itself off - no need to click again." 9 $muted $false 24 120))
-$btnOk = New-Object System.Windows.Forms.Button
-$btnOk.Text = "Got it"
-$btnOk.Size = New-Object System.Drawing.Size(120, 34)
-$btnOk.Location = New-Object System.Drawing.Point(276, 134)
-$btnOk.FlatStyle = "Flat"
-$btnOk.FlatAppearance.BorderSize = 0
-$btnOk.BackColor = $accent
-$btnOk.ForeColor = $fg
+$done = New-BaseForm -Title "NightWatch" -Height 224
+$y = $PAD
+$done.Controls.Add((New-Label "STUDY BREAK ACTIVATED" 15 $accent $true $PAD $y)); $y += 34
+$done.Controls.Add((New-Label "$minutes minute break - auto-shutdown is PAUSED." 11 $fg $false $PAD $y)); $y += 28
+$done.Controls.Add((New-Label "Auto-off at $($expiresAt.ToString('HH:mm:ss'))" 12 $fg $true $PAD $y)); $y += 28
+$done.Controls.Add((New-Label "It turns itself off - no need to click again." 9 $muted $false $PAD $y)); $y += 32
+
+$btnOk = New-Button "Got it" $accent $accent ($FORM_W - $PAD - 130) $y 130 $true
 $btnOk.Add_Click({ $done.Close() })
 $done.Controls.Add($btnOk)
 $done.AcceptButton = $btnOk
