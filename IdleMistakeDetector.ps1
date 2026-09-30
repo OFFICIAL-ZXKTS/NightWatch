@@ -1,11 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    NightWatch Automated Mistake Detector & Idle Sentinel (v2.1)
+    NightWatch Automated Mistake Detector & Idle Sentinel (v3.0)
 .DESCRIPTION
     1. Measures TRUE physical keyboard/mouse idle time via Win32 GetLastInputInfo.
     2. Only acts if computer has been idle for AT LEAST 30 MINUTES (1800 seconds).
-    3. Never modifies or deletes Desktop files, preventing desktop icon refresh/flicker.
-    4. If 30-min idle is reached without break mode:
+    3. Break state has a user-set DURATION and auto-expires when it elapses.
+    4. Break state is bound to the OS boot session: if the PC was restarted or
+       shut down, any break from the previous session is discarded.
+       Sleep and hibernate do NOT reset boot uptime, so breaks survive those.
+    5. Never modifies or deletes Desktop files, preventing desktop refresh/flicker.
+    6. If 30-min idle is reached without a valid break:
        - Plays 30 seconds of warning beeps.
        - Moving mouse or pressing any key cancels shutdown immediately.
 #>
@@ -41,6 +45,72 @@ $idleMs = [Win32Idle]::GetIdleTimeMs()
 $idleSeconds = [Math]::Floor($idleMs / 1000)
 $targetIdleSeconds = 1800 # 30 minutes exact
 
+# Current OS boot uptime in ms. Resets to ~0 on restart/shutdown, keeps
+# increasing across sleep and hibernate. This is the boot-session fingerprint.
+$currentUptimeMs = [long][Environment]::TickCount
+
+$dataDir = "C:\ProgramData\NightWatch"
+if (-not (Test-Path $dataDir)) {
+    try { New-Item -ItemType Directory -Path $dataDir -Force | Out-Null } catch {}
+}
+$stateFile = Join-Path $dataDir "break_state.json"
+$logFile = Join-Path $dataDir "mistake_detector.log"
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+# -----------------------------------------------------------------
+# BREAK STATE RESOLUTION (single source of truth: break_state.json)
+# A break is only honoured when BOTH hold:
+#   a) it was created in the CURRENT boot session, and
+#   b) its duration has not elapsed yet.
+# -----------------------------------------------------------------
+$isBreakActive = $false
+$clearReason = $null
+$json = $null
+
+if (Test-Path $stateFile) {
+    try {
+        $json = Get-Content $stateFile -Raw | ConvertFrom-Json
+    } catch { $json = $null }
+}
+
+if ($json -and [bool]$json.Active) {
+
+    # (a) Boot-session check. Stored uptime greater than current uptime means
+    # the machine rebooted after the break was created, so it is stale.
+    # Sleep/hibernate keep uptime monotonic, so those breaks stay valid.
+    if ($null -ne $json.BootUptimeMs) {
+        $storedUptime = [long]$json.BootUptimeMs
+        if ($storedUptime -gt $currentUptimeMs) {
+            $isBreakActive = $false
+            $clearReason = "PC was restarted or shut down since this break was set. Break discarded."
+        }
+    } else {
+        # Legacy state with no boot fingerprint: cannot prove it is current.
+        $isBreakActive = $false
+        $clearReason = "Break state predates boot-session tracking. Break discarded."
+    }
+
+    # (b) Duration expiry check.
+    if ($isBreakActive -and $json.ExpiresAt) {
+        try {
+            if ((Get-Date) -gt ([DateTime]$json.ExpiresAt)) {
+                $isBreakActive = $false
+                $clearReason = "Break duration of $($json.DurationMinutes) min has elapsed. Auto-disabled."
+            }
+        } catch {}
+    }
+}
+
+# Persist the cleared state once, so later runs agree and the toggle button
+# reflects reality. Guarded so this only happens on the transition.
+if ($clearReason -and (Test-Path $stateFile)) {
+    try {
+        $cleared = @{ Active = $false; Timestamp = (Get-Date).ToString("o"); Mode = "AutoCleared" }
+        $cleared | ConvertTo-Json | Set-Content -Path $stateFile -Force
+        Add-Content -Path $logFile -Value "[$timestamp] BREAK CLEARED: $clearReason" -ErrorAction SilentlyContinue
+    } catch {}
+}
+
 # IF COMPUTER IS NOT IDLE FOR 30 MINUTES -> EXIT IMMEDIATELY
 # Does not touch any files, does not steal focus, 0% CPU impact.
 if ($idleSeconds -lt $targetIdleSeconds) {
@@ -50,52 +120,6 @@ if ($idleSeconds -lt $targetIdleSeconds) {
 # -----------------------------------------------------------------
 # 30 MINUTES OF TRUE INACTIVITY REACHED
 # -----------------------------------------------------------------
-
-$dataDir = "C:\ProgramData\NightWatch"
-$logFile = Join-Path $dataDir "mistake_detector.log"
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
-# Check if break mode is currently active (Read-only check)
-$stateFile = Join-Path $dataDir "break_state.json"
-$isBreakActive = $false
-
-if (Test-Path $stateFile) {
-    try {
-        $json = Get-Content $stateFile -Raw | ConvertFrom-Json
-        $isBreakActive = [bool]$json.Active
-        
-        # Auto-expire break mode if it has been active for more than 6 hours
-        if ($isBreakActive -and $json.Timestamp) {
-            $ageHours = ((Get-Date) - [DateTime]$json.Timestamp).TotalHours
-            if ($ageHours -gt 6) {
-                $isBreakActive = $false
-            }
-        }
-    } catch {}
-}
-
-# Also check for Desktop marker existence (Read-only check)
-if (-not $isBreakActive) {
-    $desktopMarker = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)) "break_marker.txt"
-    if (Test-Path $desktopMarker) {
-        $isBreakActive = $true
-    }
-}
-
-# CHECK 0: Fresh-boot detection.
-# Environment.TickCount is ms since the current OS session started. If uptime
-# is < 5 min and break is active, the break was set in a *previous* OS session
-# (i.e. before the most recent shutdown). The user's "intentional break"
-# intent cannot survive a shutdown â€” clear it so 30-min idle protection
-# works normally after a reboot.
-$bootThresholdMs = 300000  # 5 minutes
-if ([Environment]::TickCount -lt $bootThresholdMs -and $isBreakActive) {
-    $clearedState = @{ Active = $false; Timestamp = (Get-Date).ToString("o"); Mode = "AutoClearedAfterShutdown" }
-    $clearedState | ConvertTo-Json | Set-Content -Path $stateFile -Force
-    $isBreakActive = $false
-    $logMsg = "[$timestamp] FRESH BOOT DETECTED: PC uptime < 5 min. Previous-session break cleared automatically."
-    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
-}
 
 if ($isBreakActive) {
     # Intentional break is active: DO NOT SHUT DOWN.

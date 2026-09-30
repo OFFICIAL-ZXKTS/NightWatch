@@ -57,7 +57,7 @@ try {
     $wshShell = New-Object -ComObject WScript.Shell
     $shortcut = $wshShell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = "powershell.exe"
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$breakScriptPath`""
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$breakScriptPath`""
     $shortcut.WorkingDirectory = $scriptDir
     $customIconPath = Join-Path $scriptDir "assets\icon.ico"
     if (Test-Path $customIconPath) {

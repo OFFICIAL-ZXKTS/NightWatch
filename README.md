@@ -72,7 +72,8 @@ graph TD
 
 - **🎯 True 30-Minute Physical Idle Tracking**: Uses Win32 `GetLastInputInfo` to measure exact keyboard and mouse idle time. Immune to Windows 11 false alarms (no more premature shutdowns at 10 minutes when your screen dims!).
 - **🔊 30-Second Warning Beep Countdown**: Plays audible warning beeps before shutting down. Moving the mouse or tapping any key during the beeps instantly aborts the shutdown!
-- **☕ Bulletproof Break Mode**: Toggle on break mode with **`Ctrl + Alt + B`** or by double-clicking the custom icon. Immune to rapid double-clicks (debounce guard), keeps PC alive throughout your break, and auto-resumes protection once you return and type.
+- **⏱️ Timed Breaks That End Themselves**: Press **`Ctrl + Alt + B`** (or double-click the icon) and a dialog asks how long your break lasts — pick **15 / 30 / 40 / 60 min** or type any custom value. Auto-shutdown stays paused for exactly that long, then **re-arms automatically**. You never have to click again to turn it off.
+- **🔁 Boot-Session Aware Breaks**: Every break is stamped with the current OS boot session. **Restarting or shutting down the PC cancels the break** (a break can't survive a reboot you didn't plan), while **sleep and hibernate preserve it**, since those keep the same boot session.
 - **🛡️ Accidental Sleep Defense**: If you truly fall asleep with no break active, NightWatch executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
 - **☁️ Cloud & OneDrive Aware**: Automatically detects both native and OneDrive-redirected Windows 11 Desktop environments.
 - **🔋 Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
@@ -156,7 +157,7 @@ The installer will automatically:
 3. **Register the scheduled task**:
    - Open `taskschd.msc` $\rightarrow$ **Create Task...** (not "Create Basic Task").
    - **General** tab:
-     - **Name**: `SleepSafeSentinel`
+     - **Name**: `NightWatchSentinel`
      - Select *Run only when user is logged on*
      - Check *Run with highest privileges*
    - **Triggers** tab $\rightarrow$ **New...**:
@@ -180,9 +181,15 @@ The installer will automatically:
 1. When you step away from your desk, do either:
    - **Double-click** the **Study Break** desktop shortcut, OR
    - Press **`Ctrl + Alt + B`** on your keyboard.
-2. A popup confirms: *"Study Break Activated! Auto-shutdown is PAUSED."*
-3. Your PC stays ON normally with no forced sleep. After 30 minutes of idle time, the background watcher sees your break signal and skips shutdown.
-4. When you come back, click the button again to toggle break mode OFF, or continue working.
+2. A **duration dialog** appears *before* anything is enabled. Choose a preset
+   (**15 / 30 / 40 / 60 min**) or type a custom number of minutes.
+3. Click **Start**. A confirmation shows the exact time your break ends.
+4. Your PC stays ON normally with no forced sleep. The background watcher sees
+   the active break and skips shutdown for the whole duration.
+5. **Nothing else to do.** When the duration elapses, the break turns itself
+   **OFF** and the 30-minute idle protection is armed again automatically.
+6. If you return early and want the protection back sooner, just press the
+   button again and confirm **Yes** to end the break.
 
 ### Scenario B: Accidentally Falling Asleep
 1. You fall asleep while studying without hitting the break button.
@@ -190,6 +197,28 @@ The installer will automatically:
 3. It detects that no intentional break signal exists.
 4. It sounds a **30-second warning beep countdown**. Touching the mouse or keyboard cancels it immediately.
 5. If ignored for 30 seconds, it performs a clean, forced shutdown to protect your battery and hardware.
+
+---
+
+## ⏱️ How Breaks Expire
+
+A break is only honoured while **both** of these are true:
+
+| Rule | Behaviour | Why |
+| :--- | :--- | :--- |
+| **Duration not elapsed** | Break clears itself once your chosen minutes are up | You never have to remember to switch it off |
+| **Same boot session** | A break is discarded if the PC was restarted or shut down | You can't be "on break" across a shutdown you didn't plan |
+| **Sleep / hibernate** | Break is **kept** | These don't end the boot session, so a break still counts |
+
+How it detects this: each break records the OS uptime in milliseconds at the
+moment you start it (`BootUptimeMs`). Uptime resets to near zero on a real
+restart or shutdown, but keeps climbing through sleep and hibernate. So if the
+stored uptime is *higher* than the current uptime, a reboot must have happened
+in between and the break is stale.
+
+> **Note:** a break is not cancelled by restarting the PC — it is *discarded*,
+> which is the same practical effect. Your idle protection returns to normal
+> after the next reboot, with no manual cleanup required.
 
 ---
 
