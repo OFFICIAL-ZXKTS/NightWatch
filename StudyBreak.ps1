@@ -36,11 +36,9 @@ $danger    = [System.Drawing.Color]::FromArgb(226, 96, 96)
 $line      = [System.Drawing.Color]::FromArgb(58, 62, 74)
 
 # Layout constants
-$PAD      = 24
+$PAD      = 22
 $FORM_W   = 440
-$LBL_H    = 26
-$BTN_H    = 40
-$ROW_GAP  = 10
+$BTN_H    = 42
 
 # Build a form with DPI scaling disabled so nothing is rescaled twice.
 function New-BaseForm {
@@ -61,30 +59,54 @@ function New-BaseForm {
     return $f
 }
 
-# Label with a height derived from the font, so tall text cannot overflow
-# into whatever sits below it.
+# A single-column TableLayoutPanel. Label rows are AutoSize, so a row grows
+# to fit its text instead of using a guessed pixel height. That makes overlap
+# structurally impossible no matter what font size or DPI is in play.
+function New-Stack {
+    $t = New-Object System.Windows.Forms.TableLayoutPanel
+    $t.Dock = "Fill"
+    $t.ColumnCount = 1
+    $t.RowCount = 0
+    $t.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $t.Padding = New-Object System.Windows.Forms.Padding($PAD, $PAD, $PAD, $PAD)
+    $t.BackColor = $bg
+    $t.Margin = New-Object System.Windows.Forms.Padding(0)
+    return $t
+}
+
+# Append a row and return its index.
+function Add-Row {
+    param($Stack, [string]$Type = "Auto", $Value = 0)
+    switch ($Type) {
+        "Abs"  { $Stack.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, [single]$Value))) | Out-Null }
+        "Fill" { $Stack.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null }
+        default{ $Stack.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize))) | Out-Null }
+    }
+    $Stack.RowCount = $Stack.RowStyles.Count
+    return $Stack.RowCount - 1
+}
+
+# Auto-sizing label. Height is delegated to the row, so it can never be wrong.
 function New-Label {
-    param($Text, [float]$Size, $Color, [bool]$Bold, [int]$X, [int]$Y, [int]$W = ($FORM_W - 2 * $PAD))
+    param($Text, [float]$Size, $Color, [bool]$Bold, [int]$BottomMargin = 4)
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $Text
     $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
     $l.Font = New-Object System.Drawing.Font("Segoe UI", $Size, $style)
     $l.ForeColor = $Color
     $l.BackColor = $bg
-    $l.Location = New-Object System.Drawing.Point($X, $Y)
-    # ~1.65 line height plus padding is enough for Segoe UI at any of our sizes.
-    $h = [int][Math]::Ceiling($Size * 1.65) + 6
-    $l.Size = New-Object System.Drawing.Size($W, $h)
+    $l.AutoSize = $true
+    $l.Dock = "Fill"
+    $l.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, $BottomMargin)
     return $l
 }
 
 function New-Button {
-    param($Text, $Color, $BorderColor, [int]$X, [int]$Y, [int]$W = 0, [bool]$AccentFont = $false)
+    param($Text, $Color, $BorderColor, [int]$W, [bool]$AccentFont = $false)
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $Text
-    $b.Height = $BTN_H
-    if ($W -gt 0) { $b.Width = $W }
-    $b.Location = New-Object System.Drawing.Point($X, $Y)
+    $b.Dock = "Fill"
+    $b.Margin = New-Object System.Windows.Forms.Padding(0)
     $b.FlatStyle = "Flat"
     $b.FlatAppearance.BorderSize = 1
     $b.FlatAppearance.BorderColor = $(if ($BorderColor) { $BorderColor } else { $Color })
@@ -94,7 +116,29 @@ function New-Button {
     $b.Font = New-Object System.Drawing.Font("Segoe UI", 10, $style)
     $b.UseVisualStyleBackColor = $false
     $b.AutoSize = $false
+    $b.MinimumSize = New-Object System.Drawing.Size($W, $BTN_H)
     return $b
+}
+
+# Horizontal row of equal-width buttons.
+function New-ButtonRow {
+    param([int[]]$Items, $Color, $BorderColor, [bool]$AccentFont = $false, [int]$Gap = 8, [int]$MinW = 0)
+    $t = New-Object System.Windows.Forms.TableLayoutPanel
+    $t.Dock = "Fill"
+    $t.ColumnCount = $Items.Count
+    $t.RowCount = 1
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $t.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, [single](100 / $Items.Count)))) | Out-Null
+    }
+    $t.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $t.BackColor = $bg
+    $t.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $b = New-Button ([string]$Items[$i]) $Color $BorderColor $MinW $AccentFont
+        $b.Margin = New-Object System.Windows.Forms.Padding(($(if ($i -eq 0) { 0 } else { $Gap })), 0, $(if ($i -eq $Items.Count - 1) { 0 } else { 0 }), 0)
+        $t.Controls.Add($b, $i, 0)
+    }
+    return $t
 }
 
 # -----------------------------------------------------------------
@@ -148,23 +192,39 @@ if ($isActive) {
     $remaining = [int][Math]::Ceiling(($expiresAt - (Get-Date)).TotalMinutes)
     if ($remaining -lt 0) { $remaining = 0 }
 
-    $dlg = New-BaseForm -Title "NightWatch" -Height 236
-    $y = $PAD
+    $dlg = New-BaseForm -Title "NightWatch" -Height 250
+    $st = New-Stack
+    $dlg.Controls.Add($st) | Out-Null
 
-    $dlg.Controls.Add((New-Label "STUDY BREAK IS ACTIVE" 10 $muted $true $PAD $y)); $y += 24
-    $dlg.Controls.Add((New-Label "Auto-shutdown is paused." 13 $fg $false $PAD $y)); $y += 30
-    $dlg.Controls.Add((New-Label "Ends at  $($expiresAt.ToString('HH:mm:ss'))" 12 $accent $true $PAD $y)); $y += 28
-    $dlg.Controls.Add((New-Label "$durationMinutes min break  |  $remaining min remaining" 10 $muted $false $PAD $y)); $y += 30
+    $r = Add-Row $st; $st.Controls.Add((New-Label "STUDY BREAK IS ACTIVE" 10 $muted $true 6), 0, $r)
+    $r = Add-Row $st; $st.Controls.Add((New-Label "Auto-shutdown is paused." 13 $fg $false 6), 0, $r)
+    $r = Add-Row $st; $st.Controls.Add((New-Label "Ends at  $($expiresAt.ToString('HH:mm:ss'))" 12 $accent $true 6), 0, $r)
+    $r = Add-Row $st; $st.Controls.Add((New-Label "$durationMinutes min break  |  $remaining min remaining" 10 $muted $false 12), 0, $r)
+    $r = Add-Row $st "Fill"
+    $r = Add-Row $st "Abs" $BTN_H
 
-    $btnW = [int](($FORM_W - 3 * $PAD) / 2)
-    $btnKeep = New-Button "Keep break" $panel $line $PAD $y $btnW
+    $btnKeep = New-Button "Keep break" $panel $line 0
     $btnKeep.ForeColor = $muted
+    $btnKeep.Margin = New-Object System.Windows.Forms.Padding(0, 0, 6, 0)
     $btnKeep.Add_Click({ $script:EndNow = $false; $dlg.Close() })
-    $dlg.Controls.Add($btnKeep)
 
-    $btnEnd = New-Button "End break now" $danger $danger ($PAD + $btnW + $PAD) $y $btnW
+    $btnEnd = New-Button "End break now" $danger $danger 0
+    $btnEnd.Margin = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
     $btnEnd.Add_Click({ $script:EndNow = $true; $dlg.Close() })
-    $dlg.Controls.Add($btnEnd)
+
+    # Two equal halves side by side.
+    $split = New-Object System.Windows.Forms.TableLayoutPanel
+    $split.Dock = "Fill"
+    $split.ColumnCount = 2
+    $split.RowCount = 1
+    $split.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50))) | Out-Null
+    $split.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50))) | Out-Null
+    $split.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $split.BackColor = $bg
+    $split.Margin = New-Object System.Windows.Forms.Padding(0)
+    $split.Controls.Add($btnKeep, 0, 0)
+    $split.Controls.Add($btnEnd, 1, 0)
+    $st.Controls.Add($split, 0, $r)
 
     $script:EndNow = $false
     $dlg.AcceptButton = $btnEnd
@@ -185,17 +245,39 @@ if ($isActive) {
 # -----------------------------------------------------------------
 # DURATION PICKER
 # -----------------------------------------------------------------
-$form = New-BaseForm -Title "NightWatch - Study Break" -Height 300
-$y = $PAD
-$form.Controls.Add((New-Label "How long is your study break?" 15 $fg $true $PAD $y)); $y += 32
-$form.Controls.Add((New-Label "Paused for this long, then re-arms by itself." 9 $muted $false $PAD $y)); $y += 28
+$form = New-BaseForm -Title "NightWatch - Study Break" -Height 320
+$st = New-Stack
+$form.Controls.Add($st) | Out-Null
+
+$r = Add-Row $st; $st.Controls.Add((New-Label "How long is your study break?" 15 $fg $true 6), 0, $r)
+$r = Add-Row $st; $st.Controls.Add((New-Label "Paused for this long, then re-arms by itself." 9 $muted $false 14), 0, $r)
 
 $script:ChosenMinutes = 0
 
-# Live preview, placed under the preset row with room to breathe.
-$previewY = $y + $BTN_H + $ROW_GAP
-$preview = New-Label "" 10 $accent $true $PAD $previewY
-$form.Controls.Add($preview)
+# Preset buttons in one row
+$r = Add-Row $st "Abs" $BTN_H
+$presets = @(15, 30, 40, 60)
+$presetRow = New-Object System.Windows.Forms.TableLayoutPanel
+$presetRow.Dock = "Fill"
+$presetRow.ColumnCount = $presets.Count
+$presetRow.RowCount = 1
+$presetRow.BackColor = $bg
+$presetRow.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 10)
+for ($i = 0; $i -lt $presets.Count; $i++) {
+    $presetRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 25))) | Out-Null
+    $b = New-Button "$($presets[$i]) min" $panel $accent 0 $true
+    $b.Margin = New-Object System.Windows.Forms.Padding($(if ($i -eq 0) { 0 } else { 4 }), 0, $(if ($i -eq $presets.Count - 1) { 0 } else { 4 }), 0)
+    $b.Tag = $presets[$i]
+    $b.Add_Click({ $script:ChosenMinutes = [int]$this.Tag; $form.Close() })
+    $presetRow.Controls.Add($b, $i, 0)
+}
+$presetRow.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$st.Controls.Add($presetRow, 0, $r)
+
+# Live preview of the auto-off time
+$r = Add-Row $st
+$preview = New-Label "" 10 $accent $true 14
+$st.Controls.Add($preview, 0, $r)
 
 function Update-Preview {
     param([int]$Minutes)
@@ -203,47 +285,56 @@ function Update-Preview {
     $preview.Text = "Auto-off at  $($end.ToString('HH:mm:ss'))    ($Minutes min from now)"
 }
 
-# Preset buttons in one row
-$presets = @(15, 30, 40, 60)
-$gap = 8
-$btnW = [int](($FORM_W - 2 * $PAD - $gap * ($presets.Count - 1)) / $presets.Count)
-$x = $PAD
-foreach ($m in $presets) {
-    $b = New-Button "$m min" $panel $accent $x $y $btnW $true
-    $b.Tag = $m
-    $b.Add_Click({
-        $script:ChosenMinutes = [int]$this.Tag
-        $form.Close()
-    })
-    $form.Controls.Add($b)
-    $x += $btnW + $gap
-}
-$y = $previewY + 30
+$r = Add-Row $st; $st.Controls.Add((New-Label "Custom (1-1440 min)" 9 $muted $false 8), 0, $r)
 
-$form.Controls.Add((New-Label "Custom (1-1440 min)" 9 $muted $false $PAD $y)); $y += 22
+# Numeric field and its button share one row
+$r = Add-Row $st "Abs" $BTN_H
+$customRow = New-Object System.Windows.Forms.TableLayoutPanel
+$customRow.Dock = "Fill"
+$customRow.ColumnCount = 2
+$customRow.RowCount = 1
+$customRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 120))) | Out-Null
+$customRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$customRow.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$customRow.BackColor = $bg
+$customRow.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
 
 $num = New-Object System.Windows.Forms.NumericUpDown
 $num.Minimum = 1
 $num.Maximum = 1440
 $num.Value = 45
-$num.Size = New-Object System.Drawing.Size(110, $BTN_H)
-$num.Location = New-Object System.Drawing.Point($PAD, $y)
+$num.Dock = "Fill"
+$num.Margin = New-Object System.Windows.Forms.Padding(0, 0, 6, 0)
 $num.BackColor = $panel
 $num.ForeColor = $fg
-$form.Controls.Add($num)
+$customRow.Controls.Add($num, 0, 0)
 
-$btnStartCustom = New-Button "Start custom break" $panel $accent ($PAD + 118) ($y - 6) 190
-$btnStartCustom.Add_Click({
-    $script:ChosenMinutes = [int]$num.Value
-    $form.Close()
-})
-$form.Controls.Add($btnStartCustom)
-$y += $BTN_H + $ROW_GAP
+$btnStartCustom = New-Button "Start custom break" $panel $accent 0
+$btnStartCustom.Margin = New-Object System.Windows.Forms.Padding(0)
+$btnStartCustom.Add_Click({ $script:ChosenMinutes = [int]$num.Value; $form.Close() })
+$customRow.Controls.Add($btnStartCustom, 1, 0)
+$st.Controls.Add($customRow, 0, $r)
 
-$btnCancel = New-Button "Cancel" $panel $line ($FORM_W - $PAD - 130) $y 130
+# Spacer pushes the actions to the bottom edge.
+$r = Add-Row $st "Fill"
+$r = Add-Row $st "Abs" $BTN_H
+
+# Right-aligned Cancel
+$actionRow = New-Object System.Windows.Forms.TableLayoutPanel
+$actionRow.Dock = "Fill"
+$actionRow.ColumnCount = 2
+$actionRow.RowCount = 1
+$actionRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$actionRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 140))) | Out-Null
+$actionRow.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$actionRow.BackColor = $bg
+$actionRow.Margin = New-Object System.Windows.Forms.Padding(0)
+
+$btnCancel = New-Button "Cancel" $panel $line 0
 $btnCancel.ForeColor = $muted
 $btnCancel.Add_Click({ $script:ChosenMinutes = 0; $form.Close() })
-$form.Controls.Add($btnCancel)
+$actionRow.Controls.Add($btnCancel, 1, 0)
+$st.Controls.Add($actionRow, 0, $r)
 
 $form.AcceptButton = $btnStartCustom
 $form.CancelButton = $btnCancel
@@ -274,16 +365,33 @@ Set-Content -Path $stateFile -Value $state -Force
 
 try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
 
-$done = New-BaseForm -Title "NightWatch" -Height 224
-$y = $PAD
-$done.Controls.Add((New-Label "STUDY BREAK ACTIVATED" 15 $accent $true $PAD $y)); $y += 34
-$done.Controls.Add((New-Label "$minutes minute break - auto-shutdown is PAUSED." 11 $fg $false $PAD $y)); $y += 28
-$done.Controls.Add((New-Label "Auto-off at $($expiresAt.ToString('HH:mm:ss'))" 12 $fg $true $PAD $y)); $y += 28
-$done.Controls.Add((New-Label "It turns itself off - no need to click again." 9 $muted $false $PAD $y)); $y += 32
+$done = New-BaseForm -Title "NightWatch" -Height 240
+$dst = New-Stack
+$done.Controls.Add($dst) | Out-Null
 
-$btnOk = New-Button "Got it" $accent $accent ($FORM_W - $PAD - 130) $y 130 $true
+$r = Add-Row $dst; $dst.Controls.Add((New-Label "STUDY BREAK ACTIVATED" 15 $accent $true 6), 0, $r)
+$r = Add-Row $dst; $dst.Controls.Add((New-Label "$minutes minute break - auto-shutdown is PAUSED." 11 $fg $false 6), 0, $r)
+$r = Add-Row $dst; $dst.Controls.Add((New-Label "Auto-off at $($expiresAt.ToString('HH:mm:ss'))" 12 $fg $true 6), 0, $r)
+$r = Add-Row $dst; $dst.Controls.Add((New-Label "It turns itself off - no need to click again." 9 $muted $false 10), 0, $r)
+$r = Add-Row $dst "Fill"
+$r = Add-Row $dst "Abs" $BTN_H
+
+# Right-aligned acknowledgement button
+$okRow = New-Object System.Windows.Forms.TableLayoutPanel
+$okRow.Dock = "Fill"
+$okRow.ColumnCount = 2
+$okRow.RowCount = 1
+$okRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$okRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 140))) | Out-Null
+$okRow.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+$okRow.BackColor = $bg
+$okRow.Margin = New-Object System.Windows.Forms.Padding(0)
+
+$btnOk = New-Button "Got it" $accent $accent 0 $true
 $btnOk.Add_Click({ $done.Close() })
-$done.Controls.Add($btnOk)
+$okRow.Controls.Add($btnOk, 1, 0)
+$dst.Controls.Add($okRow, 0, $r)
+
 $done.AcceptButton = $btnOk
 $done.CancelButton = $btnOk
 $done.ShowDialog() | Out-Null
