@@ -40,6 +40,144 @@ public class Win32Idle {
 '@
 }
 
+# 1b. Compile a high-volume alarm using the Win32 waveOut API.
+# Console::Beep plays a quiet system tone that is easily missed when the user
+# is asleep. waveOut lets us drive the audio device at full volume, so the
+# warning is genuinely loud enough to wake someone.
+if (-not ([System.Management.Automation.PSTypeName]'NightWatchLoudAlarm').Type) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+public class NightWatchLoudAlarm {
+    const int WAVE_MAPPER = -1;
+    const uint WAVE_FORMAT_PCM = 1;
+    const uint WAVE_MAPPER_NO_SOUNDHANDLER_HACK = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WAVEFORMATEX {
+        public ushort wFormatTag;
+        public ushort nChannels;
+        public uint nSamplesPerSec;
+        public uint nAvgBytesPerSec;
+        public ushort nBlockAlign;
+        public ushort wBitsPerSample;
+        public ushort cbSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WAVEHDR {
+        public IntPtr lpData;
+        public uint dwBufferLength;
+        public uint dwBytesRecorded;
+        public IntPtr dwUser;
+        public uint dwFlags;
+        public uint dwLoops;
+        public IntPtr lpNext;
+        public IntPtr reserved;
+    }
+
+    [DllImport("winmm.dll", CharSet = CharSet.Auto)]
+    static extern int waveOutOpen(out IntPtr hWaveOut, int uDeviceID, ref WAVEFORMATEX lpFormat, IntPtr dwCallback, IntPtr dwInstance, uint dwFlags);
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutPrepareHeader(IntPtr hWaveOut, ref WAVEHDR lpWaveOutHdr, uint uSize);
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutWrite(IntPtr hWaveOut, ref WAVEHDR lpWaveOutHdr, uint uSize);
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutUnprepareHeader(IntPtr hWaveOut, ref WAVEHDR lpWaveOutHdr, uint uSize);
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutReset(IntPtr hWaveOut);
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutClose(IntPtr hWaveOut);
+
+    const uint WHDR_DONE = 0x00000001;
+    const uint WAVEVOLUME_MAX = (uint)0xFFFFFFFF;
+
+    [DllImport("winmm.dll")]
+    static extern int waveOutSetVolume(IntPtr hWaveOut, uint dwVolume);
+
+    /// <summary>Plays a full-volume square-wave tone. Returns false on failure.</summary>
+    public static bool PlayTone(int frequency, int milliseconds) {
+        IntPtr hWave = IntPtr.Zero;
+        GCHandle pin = GCHandle.Alloc(IntPtr.Zero);
+        try {
+            WAVEFORMATEX fmt = new WAVEFORMATEX();
+            fmt.wFormatTag = (ushort)WAVE_FORMAT_PCM;
+            fmt.nChannels = 1;          // mono
+            fmt.nSamplesPerSec = 44100; // CD-rate, so tones stay clean
+            fmt.wBitsPerSample = 16;
+            fmt.nBlockAlign = (ushort)(fmt.nChannels * fmt.wBitsPerSample / 8);
+            fmt.nAvgBytesPerSec = fmt.nSamplesPerSec * fmt.nBlockAlign;
+            fmt.cbSize = 0;
+
+            if (waveOutOpen(out hWave, WAVE_MAPPER, ref fmt, IntPtr.Zero, IntPtr.Zero, 0) != 0)
+                return false;
+
+            // Drive the device to its maximum output level.
+            waveOutSetVolume(hWave, WAVEVOLUME_MAX);
+
+            int numSamples = (int)(fmt.nSamplesPerSec * (milliseconds / 1000.0));
+            short[] buffer = new short[numSamples];
+
+            // Square wave at full scale: far louder and far more attention
+            // grabbing than the sine the system beep uses.
+            int halfPeriod = (int)Math.Max(1L, (long)fmt.nSamplesPerSec / (frequency * 2));
+            for (int i = 0; i < numSamples; i++) {
+                buffer[i] = ((i / halfPeriod) % 2 == 0) ? (short)32767 : (short)-32768;
+            }
+
+            GCHandle b = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            WAVEHDR hdr = new WAVEHDR();
+            hdr.lpData = b.AddrOfPinnedObject();
+            hdr.dwBufferLength = (uint)(numSamples * sizeof(short));
+            hdr.dwBytesRecorded = 0;
+            hdr.dwUser = IntPtr.Zero;
+            hdr.dwFlags = 0;
+            hdr.dwLoops = 0;
+            hdr.lpNext = IntPtr.Zero;
+            hdr.reserved = IntPtr.Zero;
+
+            if (waveOutPrepareHeader(hWave, ref hdr, (uint)Marshal.SizeOf(typeof(WAVEHDR))) != 0) {
+                b.Free();
+                return false;
+            }
+
+            if (waveOutWrite(hWave, ref hdr, (uint)Marshal.SizeOf(typeof(WAVEHDR))) != 0) {
+                waveOutUnprepareHeader(hWave, ref hdr, (uint)Marshal.SizeOf(typeof(WAVEHDR)));
+                b.Free();
+                return false;
+            }
+
+            // Block until the tone finishes so the buffer is not freed early.
+            int waited = 0;
+            while ((hdr.dwFlags & WHDR_DONE) == 0 && waited < milliseconds + 2000) {
+                System.Threading.Thread.Sleep(20);
+                waited += 20;
+            }
+
+            waveOutReset(hWave);
+            waveOutUnprepareHeader(hWave, ref hdr, (uint)Marshal.SizeOf(typeof(WAVEHDR)));
+            b.Free();
+            return true;
+        } catch {
+            return false;
+        } finally {
+            if (hWave != IntPtr.Zero) {
+                try { waveOutReset(hWave); } catch { }
+                try { waveOutClose(hWave); } catch { }
+            }
+            try { if (pin.IsAllocated) pin.Free(); } catch { }
+        }
+    }
+}
+'@
+}
+
 # 2. Get true physical idle time in seconds
 $idleMs = [Win32Idle]::GetIdleTimeMs()
 $idleSeconds = [Math]::Floor($idleMs / 1000)
@@ -156,7 +294,7 @@ $logMsg = "[$timestamp] ACCIDENTAL SLEEP: 30 mins idle reached without break sig
 Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
 
 $aborted = $false
-$beepCycles = 15 # 15 cycles of 2 seconds = 30 seconds
+$beepCycles = 30 # 30 half-second tones = 30 seconds of continuous alarm
 
 for ($i = 0; $i -lt $beepCycles; $i++) {
     # Check if user moved mouse or pressed any key
@@ -167,16 +305,22 @@ for ($i = 0; $i -lt $beepCycles; $i++) {
         break
     }
 
-    # Sound warning beep through speakers
+    # Loud, full-volume alarm. Alternate between two piercing tones so it
+    # cuts through sleep and is impossible to mistake for a normal beep.
+    $freq = if ($i % 2 -eq 0) { 1800 } else { 2400 }
+    $played = $false
     try {
-        [Console]::Beep(1000, 250)
-        Start-Sleep -Milliseconds 100
-        [Console]::Beep(1400, 300)
-    } catch {
-        try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}
-    }
+        $played = [NightWatchLoudAlarm]::PlayTone($freq, 500)
+    } catch {}
 
-    Start-Sleep -Milliseconds 1350
+    if (-not $played) {
+        # Fall back to the system beep if waveOut is unavailable.
+        try {
+            [Console]::Beep($freq, 500)
+        } catch {
+            try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}
+        }
+    }
 }
 
 if ($aborted) {
