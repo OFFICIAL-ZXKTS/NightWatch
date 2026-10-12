@@ -36,8 +36,23 @@ if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
 
+# 1b. Grant Authenticated Users full control of the data directory and any
+# existing log file. The default ProgramData ACL lets anyone CREATE files in
+# the directory, but APPENDING to an existing file needs file-level write,
+# which BUILTIN\Users does not get by default. Without this fix, the sentinel
+# (and manual test runs) silently fail to write mistake_detector.log.
+try {
+    icacls $dataDir /inheritance:r /grant "BUILTIN\Users:(OI)(CI)F" /T | Out-Null
+    $logFile = Join-Path $dataDir "mistake_detector.log"
+    if (Test-Path $logFile) {
+        icacls $logFile /grant "BUILTIN\Users:F" | Out-Null
+    }
+} catch {
+    Write-Warning " -> Could not relax ACL on $dataDir : $_"
+}
+
 # 2. Enable Hibernation
-Write-Host "`n[1/3] Verifying Windows Hibernation..." -ForegroundColor Yellow
+Write-Host "`n[1/4] Verifying Windows Hibernation..." -ForegroundColor Yellow
 try {
     powercfg /hibernate on
     Write-Host " -> Hibernation is enabled successfully." -ForegroundColor Green
@@ -45,8 +60,26 @@ try {
     Write-Warning " -> Failed to set powercfg /hibernate on: $_"
 }
 
+# 2b. Suppress the "dirty boot" beep.
+# When a forced shutdown (like our sentinel's `shutdown /s /f /t 0`) finishes,
+# Windows marks the previous session as dirty in the Boot Configuration Data.
+# On the next boot, wininit.exe detects the flag and plays a single short beep
+# plus the recovery menu. Setting bootstatuspolicy to IgnoreAllFailures tells
+# Windows to skip both, regardless of how the previous session ended.
+Write-Host "`n[2/4] Suppressing the dirty-boot beep..." -ForegroundColor Yellow
+try {
+    $bcdOut = & bcdedit.exe /set "{default}" bootstatuspolicy IgnoreAllFailures 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host " -> Boot beep suppressed. Will not sound after a forced shutdown." -ForegroundColor Green
+    } else {
+        Write-Warning " -> bcdedit returned: $bcdOut"
+    }
+} catch {
+    Write-Warning " -> Failed to set boot status policy: $_"
+}
+
 # 3. Create Desktop Shortcut
-Write-Host "`n[2/3] Creating 'Study Break' Desktop Shortcut with 3D Icon..." -ForegroundColor Yellow
+Write-Host "`n[2/4] Creating 'Study Break' Desktop Shortcut with 3D Icon..." -ForegroundColor Yellow
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
 if (-not (Test-Path $desktopPath)) {
     $desktopPath = Join-Path $env:USERPROFILE "Desktop"
@@ -75,7 +108,7 @@ try {
 }
 
 # 4. Register NightWatch Sentinel in Task Scheduler
-Write-Host "`n[3/3] Registering NightWatch Administrative Sentinel (1-min Win32 precision check)..." -ForegroundColor Yellow
+Write-Host "`n[4/4] Registering NightWatch Administrative Sentinel (1-min Win32 precision check)..." -ForegroundColor Yellow
 
 $taskName = "NightWatchSentinel"
 $oldTaskName = "IdleMistakeDetector"
@@ -150,5 +183,5 @@ Write-Host "  NightWatch v2.0 Installed & Fully Active!           " -ForegroundC
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host "Upgrades in this version:"
 Write-Host " 1. Precise 30-min physical idle detection (no more 10-min false shutdowns!)."
-Write-Host " 2. Robust Study Break tracking with double-click protection."
-Write-Host " 3. 30-second warning BEEPS before shutdown (touching mouse cancels shutdown!)."
+Write-Host " 2. Boot-session aware breaks: restarts discard, sleep preserves."
+Write-Host " 3. Loud full-volume alarm + visible flash, falling back to system beep."
