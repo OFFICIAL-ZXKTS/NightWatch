@@ -25,12 +25,19 @@
 
 .PARAMETER SelfTest
     Render each dialog to a PNG and exit, without interaction.
+.PARAMETER Capture
+    Show each dialog and photograph the real screen instead of using
+    DrawToBitmap, then exit. Transparent controls composite differently in a
+    live window than they do under WM_PRINT, so -SelfTest can pass while the
+    dialog shows a black block on screen. Run this before trusting a change
+    that touches backgrounds or the timing card.
 .PARAMETER OutDir
     Destination folder for -SelfTest output. Defaults to %TEMP%.
 #>
 [CmdletBinding()]
 param(
     [switch]$SelfTest,
+    [switch]$Capture,
     [string]$OutDir = $env:TEMP
 )
 
@@ -155,22 +162,53 @@ namespace NW
     }
 
     /// <summary>
-    /// Base for NW controls that must show their parent's surface through.
-    /// Control refuses Color.Transparent unless SupportsTransparentBackColor is
-    /// set, and OnPaintBackground must stay empty or the parent's rounded
-    /// surface gets squared off behind the control.
+    /// Base for NW controls that sit on a solid parent surface.
+    ///
+    /// BackColor = Transparent only works when WinForms can ask the parent to
+    /// repaint this control's rectangle. On a live composited window that
+    /// repaint is not guaranteed, and when it is skipped the control's own
+    /// back buffer is simply left untouched - which is black. It showed up as
+    /// a black block behind the countdown ring, and it is intermittent: the
+    /// same build captured clean on one run and broken on the next.
+    ///
+    /// -SelfTest cannot catch it, because DrawToBitmap (WM_PRINT) always takes
+    /// the working path. Only -Capture, a real screen grab, can.
+    ///
+    /// So these controls never depend on that machinery at paint time: each
+    /// paints its own background from BackFill.
     /// </summary>
     public abstract class SurfaceControl : Control
     {
+        /// <summary>
+        /// Colour painted behind this control; empty means paint nothing.
+        /// It must match whatever the control sits on, otherwise a rounded
+        /// corner shows up as a square edge.
+        /// </summary>
+        public Color BackFill = Color.Empty;
+
         protected SurfaceControl()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
                      ControlStyles.SupportsTransparentBackColor, true);
+            // Without SupportsTransparentBackColor this assignment throws and
+            // every NW control fails to construct, taking its whole dialog
+            // with it. Keep the flag even though BackFill now does the work.
             BackColor = Color.Transparent;
         }
 
-        protected override void OnPaintBackground(PaintEventArgs pevent) { }
+        /// <summary>
+        /// Paint the background. Every derived OnPaint must call this first:
+        /// AllPaintingInWmPaint suppresses WM_ERASEBKGND, so overriding
+        /// OnPaintBackground would never run.
+        /// </summary>
+        protected void PaintBack(Graphics g)
+        {
+            if (BackFill.IsEmpty) return;
+            var r = ClientRectangle;
+            if (r.Width <= 0 || r.Height <= 0) return;
+            using (var b = new SolidBrush(BackFill)) g.FillRectangle(b, r);
+        }
     }
 
     /// <summary>Rounded surface with a subtle sheen and hairline border.</summary>
@@ -189,16 +227,16 @@ namespace NW
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Theme.Setup(g);
+            PaintBack(g);
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
             using (var p = Theme.Rounded(r, Radius))
             {
                 if (GlowStrength > 0) Theme.Glow(g, p, GlowColor, Radius, GlowStrength);
                 using (var b = new SolidBrush(Fill)) g.FillPath(b, p);
-                using (var sheen = new LinearGradientBrush(
-                           new Rectangle(r.X, r.Y, r.Width, Math.Max(1, r.Height / 2)),
-                           Color.FromArgb(16, 255, 255, 255), Color.FromArgb(0, 255, 255, 255),
-                           LinearGradientMode.Vertical))
-                    g.FillPath(sheen, p);
+                // No top-half sheen gradient: the ring and the labels sitting on
+                // the card paint a flat Fill, so a gradient underneath would
+                // show a seam along the edge of anything painted over it. The
+                // glow and the border already carry the depth.
                 using (var pen = new Pen(BorderColor, 1f)) g.DrawPath(pen, p);
             }
         }
@@ -244,6 +282,15 @@ namespace NW
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Theme.Setup(g);
+            // The mark sits on HeaderBand's vertical BgDeep->Bg gradient and
+            // spans the band's full height, so it repaints that same gradient
+            // instead of asking the band to repaint it. A flat fill would show
+            // a visible seam along the bottom of the mark.
+            using (var band = new LinearGradientBrush(
+                       new Rectangle(0, 0, Width, Height),
+                       Theme.BgDeep, Theme.Bg, LinearGradientMode.Vertical))
+                g.FillRectangle(band, new Rectangle(0, 0, Width, Height));
+
             float s = Math.Min(Width, Height);
             if (s < 4) return;
             var box = new RectangleF((Width - s) / 2f, (Height - s) / 2f, s, s);
@@ -381,6 +428,7 @@ namespace NW
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Theme.Setup(g);
+            PaintBack(g);
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
 
             Color fill, edge, txt;
@@ -514,6 +562,7 @@ namespace NW
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; Theme.Setup(g);
+            PaintBack(g);
             float pad = Thickness + 3f;
             float d = Math.Min(Width, Height) - pad * 2f;
             if (d <= 8) return;
@@ -712,6 +761,9 @@ function New-NWButton {
     if ($Accent) { $b.Accent = $Accent }
     $b.Font = [NW.Theme]::UiSemibold(9.75)
     $b.Margin = New-Object System.Windows.Forms.Padding($MarginLeft, 0, $MarginRight, 0)
+    # Buttons sit on transparent grids over Theme.Bg. Paint that background
+    # ourselves so the rounded corners never fall back to a black block.
+    $b.BackFill = [NW.Theme]::Bg
     return $b
 }
 
@@ -812,6 +864,10 @@ function New-TimingCard {
     $card.Margin = New-Object System.Windows.Forms.Padding(0)
     $card.GlowStrength = 120
     $card.GlowColor = $Tint
+    # The card has rounded corners, so the area outside them has to be painted
+    # with whatever is behind the card (Theme.Bg) or the corners go square and
+    # black. The timing card always sits on a Theme.Bg panel.
+    $card.BackFill = [NW.Theme]::Bg
 
     $grid = New-Grid 2
     $grid.ColumnStyles.Clear()
@@ -829,6 +885,10 @@ function New-TimingCard {
     $ring.Margin = New-Object System.Windows.Forms.Padding(0, 0, 16, 0)
     $ring.Accent = $Tint
     $ring.Thickness = 7
+    # Paint the card's own surface behind the ring. Relying on the ring's
+    # transparent background instead produced an intermittent black block
+    # behind the countdown on a live window.
+    $ring.BackFill = $card.Fill
     $ring.CenterBig = $RingBig
     $ring.CenterSmall = $RingSmall
     $ring.Value = $RingValue
@@ -1262,7 +1322,13 @@ function New-StatusForm {
     $r = Add-Row $pad "Abs" $script:BTN_H
     $btn = New-NWButton -Caption $ButtonText -Variant "Primary" -Accent $Tint
     $btn.Font = [NW.Theme]::UiSemibold(10)
-    $btn.Add_Click({ $form.Close() })
+    # $form is a local of this function, and by the time the click lands that
+    # scope is gone: { $form.Close() } resolves $form to $null, throws
+    # "You cannot call a method on a null-valued expression", and the window
+    # never closes. Verified against WinForms, not assumed. This matches how
+    # New-PickerForm and New-ActiveForm already reach their form.
+    $script:St = $form
+    $btn.Add_Click({ $script:St.Close() })
     $pad.Controls.Add($btn, 0, $r) | Out-Null
 
     $form.AcceptButton = $btn
@@ -1388,6 +1454,56 @@ function Invoke-SelfTest {
 
 if ($SelfTest) {
     Invoke-SelfTest
+    exit 0
+}
+
+# -Capture shows each dialog for real and photographs the screen. DrawToBitmap
+# goes through WM_PRINT, which renders transparent controls by asking the parent
+# to repaint; a live composited window does not always get that repaint, so a
+# control can pass -SelfTest and still show as a black block on screen. This
+# is the only check that sees the real thing.
+if ($Capture) {
+    $dir = if ($OutDir) { $OutDir } else { $env:TEMP }
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+    function Grab($form, $name) {
+        $form.StartPosition = "CenterScreen"
+        $form.ShowInTaskbar = $false
+        $form.Show()
+        $form.Activate()
+        # Let layout settle and every animation timer finish before shooting,
+        # otherwise the capture races the first paint.
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 1200
+        [System.Windows.Forms.Application]::DoEvents()
+
+        $r = $form.Bounds
+        $bmp = New-Object System.Drawing.Bitmap($r.Width, $r.Height)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($r.X, $r.Y, 0, 0, $bmp.Size)
+        $g.Dispose()
+        $p = Join-Path $dir $name
+        $bmp.Save($p, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+
+        # Stop any timer before disposal, or it keeps firing into script scope.
+        foreach ($m in $form.PSObject.Members) {
+            if ($m.Name -eq "Clock" -or $m.Name -eq "Timer") {
+                $t = $form.($m.Name)
+                if ($t) { try { $t.Stop(); $t.Dispose() } catch {} }
+            }
+        }
+        $form.Close()
+        $form.Dispose()
+        Write-Host "captured $p"
+    }
+
+    Grab (New-PickerForm) "cap-picker.png"
+    Grab (New-ActiveForm -ExpiresAt ((Get-Date).AddMinutes(18)) -TotalMinutes 30) "cap-active.png"
+    Grab (New-StatusForm -Kicker "PAUSED" -Headline "Break activated" `
+        -Detail "Auto-shutdown is paused." -TimeLine ((Get-Date).AddMinutes(30).ToString("HH:mm:ss")) `
+        -FootNote "It turns itself off - no need to click again." `
+        -Tint ([NW.Theme]::Cyan) -RingBig "30" -ButtonText "Got it") "cap-activated.png"
     exit 0
 }
 
