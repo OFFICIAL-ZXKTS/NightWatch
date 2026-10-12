@@ -36,17 +36,18 @@ if (-not (Test-Path $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 }
 
-# 1b. Grant Authenticated Users full control of the data directory and any
-# existing log file. The default ProgramData ACL lets anyone CREATE files in
-# the directory, but APPENDING to an existing file needs file-level write,
-# which BUILTIN\Users does not get by default. Without this fix, the sentinel
-# (and manual test runs) silently fail to write mistake_detector.log.
+# 1b. Let non-admin processes append to the sentinel's own files.
+# The default ProgramData ACL lets anyone CREATE files in the directory, but
+# APPENDING to an existing file needs file-level write, which BUILTIN\Users
+# does not get by default - so a non-admin run failed silently on the log.
+#
+# NOTE: inheritance is left ENABLED on purpose. Using /inheritance:r here
+# strips the inherited SYSTEM / Administrators / CREATOR OWNER entries from the
+# folder and every file inside it, which leaves files with an empty ACL and
+# makes them unreadable. A plain /grant with (OI)(CI) adds our ACE and lets it
+# inherit into files that already exist as well as ones created later.
 try {
-    icacls $dataDir /inheritance:r /grant "BUILTIN\Users:(OI)(CI)F" /T | Out-Null
-    $logFile = Join-Path $dataDir "mistake_detector.log"
-    if (Test-Path $logFile) {
-        icacls $logFile /grant "BUILTIN\Users:F" | Out-Null
-    }
+    icacls $dataDir /grant "BUILTIN\Users:(OI)(CI)F" /T /C | Out-Null
 } catch {
     Write-Warning " -> Could not relax ACL on $dataDir : $_"
 }
