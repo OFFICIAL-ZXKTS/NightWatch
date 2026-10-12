@@ -298,7 +298,14 @@ namespace NW
             OnClick(EventArgs.Empty);
         }
 
-        public bool Selected;
+        private bool _selected;
+        public bool Selected {
+            get { return _selected; }
+            // Must be a property, not a field: a field assignment does not
+            // invalidate, so the chip would keep its old look until some
+            // unrelated repaint happened to redraw it.
+            set { if (_selected != value) { _selected = value; Invalidate(); } }
+        }
         public BtnVariant Variant = BtnVariant.Ghost;
         public Color Accent = Theme.Cyan;
         public int Radius = 10;
@@ -315,7 +322,10 @@ namespace NW
             TabStop = true;
             AccessibleRole = AccessibleRole.PushButton;
             _anim = new Timer();
-            _anim.Interval = Theme.Animations ? 16 : 120;
+            // 33ms ~= 30fps. Hover tints and a sweeping arc do not need 60fps,
+            // and each tick invalidates the control, so this is the single
+            // biggest lever on how busy the UI feels.
+            _anim.Interval = Theme.Animations ? 33 : 120;
             _anim.Tick += delegate {
                 float dh = (_hovering ? 1f : 0f) - _hover;
                 float dp = (_pressing ? 1f : 0f) - _press;
@@ -486,7 +496,7 @@ namespace NW
         public Ring()
         {
             _anim = new Timer();
-            _anim.Interval = Theme.Animations ? 16 : 100;
+            _anim.Interval = Theme.Animations ? 33 : 100;
             _anim.Tick += delegate {
                 double d = _value - _shown;
                 if (Math.Abs(d) < 0.002) { _anim.Stop(); return; }
@@ -637,7 +647,7 @@ function New-VStack {
 }
 
 function New-Label {
-    param($Text, [float]$Size, $Color, [bool]$Bold = $false, [int]$BottomMargin = 0)
+    param($Text, [float]$Size, $Color, [bool]$Bold = $false, [int]$BottomMargin = 0, [int]$WrapWidth = 0)
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $Text
     $style = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
@@ -648,17 +658,22 @@ function New-Label {
     $l.Dock = "Fill"
     $l.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
     $l.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, $BottomMargin)
+    # Without an upper bound an AutoSize label runs off the edge of its
+    # column and gets clipped. Wrapping keeps every line inside the card.
+    if ($WrapWidth -gt 0) {
+        $l.MaximumSize = New-Object System.Drawing.Size($WrapWidth, 0)
+    }
     return $l
 }
 
 function Add-Text {
-    param($Stack, $Text, [float]$Size, $Color, [bool]$Bold = $false, [int]$BottomMargin = 0)
+    param($Stack, $Text, [float]$Size, $Color, [bool]$Bold = $false, [int]$BottomMargin = 0, [int]$WrapWidth = 0)
     $r = Add-Row $Stack
-    $Stack.Controls.Add((New-Label $Text $Size $Color $Bold $BottomMargin), 0, $r) | Out-Null
+    $Stack.Controls.Add((New-Label $Text $Size $Color $Bold $BottomMargin $WrapWidth), 0, $r) | Out-Null
 }
 
 function Add-Accent {
-    param($Stack, $Text, [float]$Size = 11.5, $Color = $null, [int]$BottomMargin = 0)
+    param($Stack, $Text, [float]$Size = 11.5, $Color = $null, [int]$BottomMargin = 0, [int]$WrapWidth = 0)
     if (-not $Color) { $Color = [NW.Theme]::Cyan }
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $Text
@@ -669,6 +684,9 @@ function Add-Accent {
     $l.Dock = "Fill"
     $l.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
     $l.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, $BottomMargin)
+    if ($WrapWidth -gt 0) {
+        $l.MaximumSize = New-Object System.Drawing.Size($WrapWidth, 0)
+    }
     $r = Add-Row $Stack
     $Stack.Controls.Add($l, 0, $r) | Out-Null
     return $l
@@ -799,6 +817,10 @@ function New-TimingCard {
     $grid.ColumnStyles.Clear()
     [void](Add-Col $grid "Abs" 106)
     [void](Add-Col $grid "Fill")
+    # Opaque, not transparent: a transparent child forces WinForms to repaint
+    # every ancestor's background into it on every invalidate, which is
+    # measurably slower (see the paint profiling in the PR).
+    $grid.BackColor = [NW.Theme]::Surface
     $grid.Margin = New-Object System.Windows.Forms.Padding(18, 15, 18, 15)
     [void](Add-Row $grid "Fill")
 
@@ -813,10 +835,14 @@ function New-TimingCard {
     $ring.AccessibleName = "Duration timer"
 
     $txt = New-VStack $grid 1
-    Add-Text $txt $Kicker 8 ([NW.Theme]::TextDim) $true 5
-    $timeLbl = Add-Accent $txt $TimeText 15 $Tint 3
-    Add-Text $txt $RelText 9 ([NW.Theme]::TextMuted) $false 0
-    Add-Text $txt $FootText 8.5 ([NW.Theme]::TextDim) $false 0
+    # Leave room for the ring column, the card padding and a little slack, so
+    # the footnote wraps instead of running under the card edge on wide-DPI
+    # setups where the point-sized fonts render larger.
+    $wrapW = $script:FORM_W - 44 - 106 - 16 - 36 - 8
+    Add-Text $txt $Kicker 8 ([NW.Theme]::TextDim) $true 5 $wrapW
+    $timeLbl = Add-Accent $txt $TimeText 15 $Tint 3 $wrapW
+    Add-Text $txt $RelText 9 ([NW.Theme]::TextMuted) $false 0 $wrapW
+    Add-Text $txt $FootText 8.5 ([NW.Theme]::TextDim) $false 0 $wrapW
     [void](Add-Row $txt "Fill")
 
     $grid.Controls.Add($ring, 0, 0) | Out-Null
@@ -826,6 +852,51 @@ function New-TimingCard {
     $card | Add-Member -NotePropertyName Ring -NotePropertyValue $ring -Force
     $card | Add-Member -NotePropertyName TimeLabel -NotePropertyValue $timeLbl -Force
     return $card
+}
+
+# ==================================================================
+# Picker helpers - script scope on purpose.
+#
+# WinForms runs these handlers long after New-PickerForm has returned, so
+# its local scope is gone. A handler that touches a local ($errLabel,
+# $btnStart, $card) gets $null and throws, and a helper *function* declared
+# inside the function cannot be resolved at all. Both failure modes are
+# silent unless you look: the caption sticks on the old value, the primary
+# button stays enabled over invalid input, and the clock timer throws once
+# a second. Hence: state in $script:Pk, functions declared here.
+# ==================================================================
+function Sync-Timing {
+    param([int]$Minutes, [bool]$Custom)
+    $end = $script:BaseTime.AddMinutes($Minutes)
+    $tint = if ($Custom) { [NW.Theme]::Blue } else { [NW.Theme]::Cyan }
+    $script:Pk.Card.Ring.CenterBig = [string]$Minutes
+    $script:Pk.Card.Ring.Value = [Math]::Max(0.06, [Math]::Min(1.0, [double]($Minutes / 120.0)))
+    $script:Pk.Card.Ring.Accent = $tint
+    $script:Pk.Card.GlowColor = $tint
+    $script:Pk.Card.TimeLabel.Text = $end.ToString("HH:mm:ss")
+    $script:Pk.Card.TimeLabel.ForeColor = $tint
+}
+
+function Sync-Action {
+    param([int]$Minutes)
+    $script:Pk.Start.Caption = if ($Minutes -eq 1) { "Start 1-minute break" } else { "Start $Minutes-minute break" }
+    $script:Pk.Start.Enabled = ($Minutes -ge 1 -and $Minutes -le 1440)
+}
+
+function Sync-Picker {
+    param([int]$Minutes, [bool]$Custom)
+    Sync-Timing -Minutes $Minutes -Custom $Custom
+    Sync-Action -Minutes $Minutes
+}
+
+function Set-Custom {
+    param([int]$Delta)
+    $cur = 0
+    [void][int]::TryParse($script:Pk.Num.Text, [ref]$cur)
+    $next = $cur + $Delta
+    if ($next -lt 1) { $next = 1 }
+    if ($next -gt 1440) { $next = 1440 }
+    $script:Pk.Num.Text = [string]$next
 }
 
 # ==================================================================
@@ -956,40 +1027,41 @@ function New-PickerForm {
     $script:UsingCustom = $false
     $script:BaseTime = Get-Date
 
-    function Sync-Picker {
-        param([int]$Minutes, [bool]$Custom)
-        $end = $script:BaseTime.AddMinutes($Minutes)
-        $tint = if ($Custom) { [NW.Theme]::Blue } else { [NW.Theme]::Cyan }
-        $card.Ring.CenterBig = [string]$Minutes
-        $card.Ring.Value = [Math]::Max(0.06, [Math]::Min(1.0, [double]($Minutes / 120.0)))
-        $card.Ring.Accent = $tint
-        $card.GlowColor = $tint
-        $card.TimeLabel.Text = $end.ToString("HH:mm:ss")
-        $card.TimeLabel.ForeColor = $tint
-        $btnStart.Caption = if ($Minutes -eq 1) { "Start 1-minute break" } else { "Start $Minutes-minute break" }
-        $btnStart.Enabled = ($Minutes -ge 1 -and $Minutes -le 1440)
+    # ------------------------------------------------------------------
+    # SCOPING
+    #
+    # WinForms invokes these handlers long after New-PickerForm has returned,
+    # at which point its local scope is gone. A handler that references a
+    # local ($errLabel, $btnStart, Sync-Picker) resolves to $null and throws.
+    # That is not cosmetic: it silently left the caption stuck on the last
+    # preset, left the primary button enabled over invalid input, and threw
+    # every second from the clock timer - which is what made the window feel
+    # frozen. Everything a handler needs therefore lives in script scope.
+    # ------------------------------------------------------------------
+    $script:Pk = @{
+        Card    = $card
+        Num     = $num
+        Err     = $errLabel
+        Start   = $btnStart
+        Presets = $presetButtons
+        Form    = $form
     }
 
+    # NO GetNewClosure() here. A closure gets its own scope, so $script:Pk
+    # inside it resolves to null and every control access throws - while a
+    # plain function call like Sync-Picker still works, which makes the
+    # failure look partial and random. $this.Tag carries the preset value
+    # instead, since WinForms binds $this to the sender.
     foreach ($b in $presetButtons) {
-        $val = [int]$b.Tag
         $b.Add_Click({
+            $val = [int]$this.Tag
             $script:ChosenMinutes = $val
             $script:UsingCustom = $false
-            $num.Text = [string]$val
-            $errLabel.Text = ""
-            foreach ($pb in $presetButtons) { $pb.Selected = ([int]$pb.Tag -eq $val) }
+            $script:Pk.Num.Text = [string]$val
+            $script:Pk.Err.Text = ""
+            foreach ($pb in $script:Pk.Presets) { $pb.Selected = ([int]$pb.Tag -eq $val) }
             Sync-Picker -Minutes $val -Custom $false
-        }.GetNewClosure())
-    }
-
-    function Set-Custom {
-        param([int]$Delta)
-        $cur = 0
-        [void][int]::TryParse($num.Text, [ref]$cur)
-        $next = $cur + $Delta
-        if ($next -lt 1) { $next = 1 }
-        if ($next -gt 1440) { $next = 1440 }
-        $num.Text = [string]$next
+        })
     }
 
     $btnMinus.Add_Click({ Set-Custom -Delta -1 })
@@ -998,49 +1070,58 @@ function New-PickerForm {
     # Live validation: never silently accept an out-of-range value.
     $num.Add_TextChanged({
         $v = 0
-        $ok = [int]::TryParse($num.Text, [ref]$v) -and $v -ge 1 -and $v -le 1440
+        $ok = [int]::TryParse($script:Pk.Num.Text, [ref]$v) -and $v -ge 1 -and $v -le 1440
         $script:UsingCustom = $true
-        foreach ($pb in $presetButtons) { $pb.Selected = $false }
+        foreach ($pb in $script:Pk.Presets) { $pb.Selected = $false }
         if (-not $ok) {
-            if ([string]::IsNullOrWhiteSpace($num.Text)) {
-                $errLabel.Text = ""
+            if ([string]::IsNullOrWhiteSpace($script:Pk.Num.Text)) {
+                $script:Pk.Err.Text = ""
             } else {
-                $errLabel.Text = "Enter a whole number from 1 to 1440."
+                $script:Pk.Err.Text = "Enter a whole number from 1 to 1440."
             }
-            $btnStart.Enabled = $false
+            $script:Pk.Start.Enabled = $false
             return
         }
-        $errLabel.Text = ""
+        $script:Pk.Err.Text = ""
         $script:ChosenMinutes = $v
         Sync-Picker -Minutes $v -Custom $true
     })
 
-    $btnCancel.Add_Click({ $script:ChosenMinutes = 0; $form.Close() })
+    $btnCancel.Add_Click({ $script:ChosenMinutes = 0; $script:Pk.Form.Close() })
 
     $btnStart.Add_Click({
         $v = 0
-        if (-not [int]::TryParse($num.Text, [ref]$v) -or $v -lt 1 -or $v -gt 1440) {
-            $errLabel.Text = "Enter a whole number from 1 to 1440."
-            $num.Focus()
+        if (-not [int]::TryParse($script:Pk.Num.Text, [ref]$v) -or $v -lt 1 -or $v -gt 1440) {
+            $script:Pk.Err.Text = "Enter a whole number from 1 to 1440."
+            $script:Pk.Num.Focus()
             return
         }
         $script:ChosenMinutes = $v
-        $form.Close()
+        $script:Pk.Form.Close()
     })
 
     # Keep the on-screen end time honest against the wall clock.
+    # Timing only - never touch the action state or the ring value here, or
+    # this timer would restart the ring animation every second.
     $clock = New-Object System.Windows.Forms.Timer
     $clock.Interval = 1000
     $clock.Add_Tick({
         $script:BaseTime = Get-Date
-        Sync-Picker -Minutes ([int]$script:ChosenMinutes) -Custom $script:UsingCustom
+        Sync-Timing -Minutes ([int]$script:ChosenMinutes) -Custom $script:UsingCustom
     })
 
     $form.AcceptButton = $btnStart
     $form.CancelButton = $btnCancel
+    $script:Pk.Form = $form
 
     Sync-Picker -Minutes 30 -Custom $false
     $form | Add-Member -NotePropertyName Clock -NotePropertyValue $clock -Force
+    # Exposed so -SelfCheck can drive the real controls instead of guessing.
+    $form | Add-Member -NotePropertyName Presets -NotePropertyValue $presetButtons -Force
+    $form | Add-Member -NotePropertyName StartButton -NotePropertyValue $btnStart -Force
+    $form | Add-Member -NotePropertyName NumBox -NotePropertyValue $num -Force
+    $form | Add-Member -NotePropertyName ErrLabel -NotePropertyValue $errLabel -Force
+    $form | Add-Member -NotePropertyName Card -NotePropertyValue $card -Force
     return $form
 }
 
@@ -1094,8 +1175,9 @@ function New-ActiveForm {
     $split.Controls.Add($btnEnd, 1, 0) | Out-Null
 
     $script:EndNow = $false
-    $btnKeep.Add_Click({ $script:EndNow = $false; $form.Close() })
-    $btnEnd.Add_Click({  $script:EndNow = $true;  $form.Close() })
+    $script:Act = @{ Card = $card; Form = $form }
+    $btnKeep.Add_Click({ $script:EndNow = $false; $script:Act.Form.Close() })
+    $btnEnd.Add_Click({  $script:EndNow = $true;  $script:Act.Form.Close() })
 
     $script:endInstant = $ExpiresAt
 $script:totalM = $total
@@ -1107,13 +1189,16 @@ $script:totalM = $total
         if ($left.TotalSeconds -lt 0) { $left = [TimeSpan]::Zero }
         $mins = [int][Math]::Ceiling($left.TotalMinutes)
         if ($mins -lt 0) { $mins = 0 }
-        $card.Ring.CenterBig = [string]$mins
+        $script:Act.Card.Ring.CenterBig = [string]$mins
         # NOTE: 0.0/1.0 must stay doubles. PowerShell resolves [Math]::Min(1, x)
         # to Min(int,int) and rounds x to an int, pinning the ring at full.
         $frac = $left.TotalMinutes / $script:totalM
-        $card.Ring.Value = [Math]::Max(0.0, [Math]::Min(1.0, [double]$frac))
-        $card.TimeLabel.Text = $script:endInstant.ToString("HH:mm:ss")
+        $script:Act.Card.Ring.Value = [Math]::Max(0.0, [Math]::Min(1.0, [double]$frac))
+        $script:Act.Card.TimeLabel.Text = $script:endInstant.ToString("HH:mm:ss")
     }
+
+    # Same scoping trap as the picker: this timer outlives the function, so
+    # the card must live in script scope or every tick would throw.
 
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 250
@@ -1206,6 +1291,14 @@ function Invoke-SelfTest {
         $p = Join-Path $dir $name
         $bmp.Save($p, [System.Drawing.Imaging.ImageFormat]::Png)
         $bmp.Dispose()
+        # Stop any timer before disposal. A live timer would keep firing into
+        # script-scope state that the NEXT form has already taken over.
+        foreach ($m in $form.PSObject.Members) {
+            if ($m.Name -eq "Clock" -or $m.Name -eq "Timer") {
+                $t = $form.($m.Name)
+                if ($t) { try { $t.Stop(); $t.Dispose() } catch {} }
+            }
+        }
         $form.Hide()
         $form.Dispose()
         Write-Host "wrote $p"
@@ -1213,6 +1306,75 @@ function Invoke-SelfTest {
 
     $f1 = New-PickerForm
     Dump $f1 "nw-picker.png"
+
+    # --- behavioural self-check on the real controls -------------------
+    $f1c = New-PickerForm
+    $f1c.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+    $script:SelfCheckFails = 0
+    function Check($name, [bool]$cond, $detail = "") {
+        if ($cond) { Write-Host "[PASS] $name" -ForegroundColor Green }
+        else { Write-Host "[FAIL] $name - $detail" -ForegroundColor Red; $script:SelfCheckFails++ }
+    }
+
+    $b60 = $f1c.Presets | Where-Object { [int]$_.Tag -eq 60 }
+    $b30 = $f1c.Presets | Where-Object { [int]$_.Tag -eq 30 }
+    $b60.PerformClick()
+    Check "click 60 -> caption updates" ($f1c.StartButton.Caption -eq "Start 60-minute break") "got '$($f1c.StartButton.Caption)'"
+    Check "click 60 -> chip becomes selected" ($b60.Selected -and -not $b30.Selected) "60=$($b60.Selected) 30=$($b30.Selected)"
+    Check "click 60 -> field follows" ($f1c.NumBox.Text -eq "60") "got '$($f1c.NumBox.Text)'"
+
+    $f1c.NumBox.Text = "6000"
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "invalid 6000 -> button disabled" (-not $f1c.StartButton.Enabled) "button still enabled"
+    Check "invalid 6000 -> error shown" ($f1c.ErrLabel.Text.Length -gt 0) "no error text"
+
+    # The regression that made this feel broken: the 1s clock used to rewrite
+    # Enabled/Caption and silently re-enable the button over bad input.
+    Start-Sleep -Milliseconds 1400
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "still disabled after a clock tick" (-not $f1c.StartButton.Enabled) "clock tick re-enabled it"
+
+    $f1c.NumBox.Text = "45"
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "valid 45 -> re-enabled" ($f1c.StartButton.Enabled) "still disabled"
+    Check "valid 45 -> caption updates" ($f1c.StartButton.Caption -eq "Start 45-minute break") "got '$($f1c.StartButton.Caption)'"
+    Check "valid 45 -> chips cleared" (-not ($f1c.Presets | Where-Object { $_.Selected } | Measure-Object).Count) "a chip is still selected"
+
+    $f1c.NumBox.Text = "1440"
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "1440 accepted" ($f1c.StartButton.Enabled -and $f1c.StartButton.Caption -eq "Start 1440-minute break") "got '$($f1c.StartButton.Caption)'"
+    $f1c.NumBox.Text = "0"
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "0 rejected" (-not $f1c.StartButton.Enabled) "0 was accepted"
+
+    Write-Host ""
+    Write-Host "Self-check: $($script:SelfCheckFails) failure(s)" -ForegroundColor $(if ($script:SelfCheckFails -eq 0) { "Green" } else { "Red" })
+    $f1c.Clock.Stop()
+    $f1c.Close()
+    $f1c.Dispose()
+
+    # --- active-break form: the 250ms timer must survive the function ---
+    $f2c = New-ActiveForm -ExpiresAt ((Get-Date).AddMinutes(18)) -TotalMinutes 30
+    $f2c.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+    $firstBig = $f2c.Card.Ring.CenterBig
+    $f2c.Timer.Start()
+    Start-Sleep -Milliseconds 1600
+    [System.Windows.Forms.Application]::DoEvents()
+    Check "active ring shows minutes left" ([int]$f2c.Card.Ring.CenterBig -ge 15 -and [int]$f2c.Card.Ring.CenterBig -le 18) "got '$($f2c.Card.Ring.CenterBig)' (was '$firstBig')"
+    Check "active ring fraction is partial" ($f2c.Card.Ring.Value -gt 0.4 -and $f2c.Card.Ring.Value -lt 0.8) "got $($f2c.Card.Ring.Value)"
+    Check "active clock still ticking" ($f2c.Card.TimeLabel.Text -match '^\d\d:\d\d:\d\d$') "got '$($f2c.Card.TimeLabel.Text)'"
+
+    $script:EndNow = $false
+    $f2c.KeepButton.PerformClick()
+    Check "Keep break -> does not end it" (-not $script:EndNow) "EndNow=$script:EndNow"
+    $f2c.Timer.Stop()
+    $f2c.Close()
+    $f2c.Dispose()
+
+    Write-Host ""
+    Write-Host "Self-check total: $($script:SelfCheckFails) failure(s)" -ForegroundColor $(if ($script:SelfCheckFails -eq 0) { "Green" } else { "Red" })
 
     $f2 = New-ActiveForm -ExpiresAt ((Get-Date).AddMinutes(18)) -TotalMinutes 30
     Dump $f2 "nw-active.png"
