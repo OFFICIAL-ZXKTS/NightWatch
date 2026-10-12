@@ -31,16 +31,6 @@
   <a href="#-uninstallation">Uninstallation</a>
 </p>
 
-<p align="center">
-  <img src="assets/screenshot-picker.png" alt="NightWatch Study Break dialog" width="400"><br>
-  <sub>Pick a duration &mdash; the ring and end time update as you choose.</sub>
-</p>
-
-<p align="center">
-  <img src="assets/screenshot-active.png" alt="NightWatch active break countdown" width="400"><br>
-  <sub>While a break runs, the ring drains and counts down in real time.</sub>
-</p>
-
 ---
 
 ## ⚡ The Big Idea: A "Dead Man's Switch" for Late-Night Studying
@@ -100,9 +90,7 @@ NightWatch/
 │   ├── wordmark-dark.svg       # 3D ANSI shadow typography wordmark (dark mode)
 │   ├── wordmark-light.svg      # 3D ANSI shadow typography wordmark (light mode)
 │   ├── icon.ico                # Windows 256x256 desktop shortcut icon
-│   ├── icon.png                # High-res desktop icon preview
-│   ├── screenshot-picker.png   # Study Break dialog (README preview)
-│   └── screenshot-active.png   # Active-break countdown (README preview)
+│   └── icon.png                # High-res desktop icon preview
 ├── StudyBreak.ps1              # Core logic: Signals break mode & pauses shutdown
 ├── StudyBreak.bat              # Standalone batch launcher
 ├── IdleMistakeDetector.ps1     # 30-minute idle watcher & safety shutdown engine
