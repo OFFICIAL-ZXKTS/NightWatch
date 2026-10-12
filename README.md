@@ -27,8 +27,6 @@
   <a href="#-quick-installation">Quick Installation</a> •
   <a href="#-usage">Usage</a> •
   <a href="#-custom-desktop-icon">Desktop Icon</a> •
-  <a href="#-boot-beep--log-files">Boot Beep & Logs</a> •
-  <a href="#-verifying-the-install">Verify</a> •
   <a href="#-frequently-asked-questions">FAQ</a> •
   <a href="#-uninstallation">Uninstallation</a>
 </p>
@@ -100,9 +98,6 @@ NightWatch/
 ├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
 ├── Reinstall.bat               # 1-click self-elevating reinstaller
 ├── Uninstall-StudySafetySystem.ps1 # One-click removal script
-├── Tests/                      # PowerShell verifiers for install + detector logic
-│   ├── Test-Phase3-Install.ps1     # Verifies scheduled task, shortcut, ACL, bcdedit, etc.
-│   └── Test-Detector-Logic.ps1     # Expiry / Reboot / Valid break-clearing branches
 ├── LICENSE                     # Official Apache 2.0 License
 └── README.md                   # Documentation
 ```
@@ -146,7 +141,6 @@ The installer will automatically:
 - Suppress the dirty-boot beep with `bcdedit /set {default} bootstatuspolicy IgnoreAllFailures` so forced shutdowns never trigger a beep at next boot.
 - Create your **Study Break** Desktop icon with the custom 3D icon and `Ctrl + Alt + B` hotkey.
 - Register the 30-minute idle detector in Windows Task Scheduler with full battery support and 100% silent execution.
-- Grant `BUILTIN\Users` full control on `C:\ProgramData\NightWatch` so manual (non-admin) runs of the detector can write its log.
 
 ---
 
@@ -239,41 +233,20 @@ icon refresh or flicker.
 
 ---
 
-## 🔇 Boot Beep & Log Files
-
-### Why was there a beep on every boot?
+## 🔇 Boot Beep
 
 A forced shutdown (`shutdown /s /f /t 0`) sets the dirty-shutdown flag in the
-Boot Configuration Data. At the next boot, `wininit.exe` sees that flag and
-plays a short beep while it offers the recovery menu. The recovery screen
-itself is suppressed, but the beep is what the user notices.
+Boot Configuration Data. At the next boot, `wininit.exe` plays a short beep
+while it offers the recovery menu.
 
-The installer now runs:
+The installer runs:
 
 ```powershell
 bcdedit /set {default} bootstatuspolicy IgnoreAllFailures
 ```
 
-This tells Windows to skip the dirty-boot recovery report entirely, regardless
-of how the previous session ended. It covers any future unexpected shutdown
-(power loss, BSOD, etc.) too — not just NightWatch's own. You can re-verify
-the setting at any time with `bcdedit /enum {default}`.
-
-### Where does the detector write its log?
-
-The sentinel writes to `C:\ProgramData\NightWatch\mistake_detector.log`. This
-is an admin-protected location, so the installer grants `BUILTIN\Users` full
-control on the directory and the existing log file, letting non-admin
-processes append to it as well.
-
-If a run still cannot write to the primary log (for example, the user is
-running the detector by hand from a context that does not have the relaxed
-ACL yet), the new `Write-Log` helper falls back to
-`%TEMP%\NightWatch.log` and only surfaces the line to the console if both
-paths fail. A warning is never silently lost.
-
-The PowerShell verifiers under `Tests/` use this fallback, so they work
-whether you run them as Administrator or as a normal user.
+so the beep is silenced for any future shutdown — not just NightWatch's own.
+You can re-verify the setting anytime with `bcdedit /enum {default}`.
 
 ---
 
@@ -326,26 +299,6 @@ To cleanly remove the shortcut and scheduled task:
 > The `bcdedit` boot-status-policy change is **not** reverted by uninstall. If
 > you want to restore the default behaviour, run
 > `bcdedit /deletevalue {default} bootstatuspolicy` from an elevated prompt.
-
----
-
-## 🧪 Verifying the Install
-
-Two PowerShell verifiers under `Tests/` check that everything is wired up
-correctly. Both work in an unelevated PowerShell.
-
-```powershell
-# Confirms the scheduled task, shortcut, data dir, log writability,
-# hibernation setting, and the bcdedit boot-status policy.
-.\Tests\Test-Phase3-Install.ps1
-
-# Exercises the three break-clearing branches of the detector
-# (expiry, reboot, valid) by writing crafted state files.
-.\Tests\Test-Detector-Logic.ps1 -Case All
-```
-
-Each script prints `[PASS]` / `[FAIL]` per assertion and exits with the
-number of failures (0 = all good).
 
 ---
 
