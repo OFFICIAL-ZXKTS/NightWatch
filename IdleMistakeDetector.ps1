@@ -250,6 +250,23 @@ if ($json -and [bool]$json.Active) {
     }
 }
 
+# Write a log line. If the primary log is denied (e.g. running as a non-admin
+# user with the default ProgramData ACL), fall back to %TEMP% so a warning is
+# never silently lost. Never throws.
+function Write-Log {
+    param([string]$Message)
+    $line = "[$timestamp] $Message"
+    $candidates = @($logFile, (Join-Path $env:TEMP "NightWatch.log"))
+    foreach ($f in $candidates) {
+        try {
+            Add-Content -Path $f -Value $line -ErrorAction Stop
+            return
+        } catch {}
+    }
+    # Both paths denied: surface to the user via the console.
+    [Console]::Error.WriteLine($line)
+}
+
 # Persist the cleared state once, so later runs agree and the toggle button
 # reflects reality. Guarded so this only happens on the transition.
 # NOTE: the state write and the log append are deliberately SEPARATE try blocks.
@@ -265,7 +282,7 @@ if ($clearReason -and (Test-Path $stateFile)) {
         # Could not persist; treat the break as inactive for this run anyway.
     }
     try {
-        Add-Content -Path $logFile -Value "[$timestamp] BREAK CLEARED: $clearReason" -ErrorAction SilentlyContinue
+        Write-Log "BREAK CLEARED: $clearReason"
     } catch {}
 }
 
@@ -283,7 +300,7 @@ if ($isBreakActive) {
     # Intentional break is active: DO NOT SHUT DOWN.
     # Leave laptop alone and do not touch any desktop files.
     $logMsg = "[$timestamp] INTENTIONAL BREAK: Computer idle for $([Math]::Round($idleSeconds/60,1)) mins, but break is active. Shutdown skipped."
-    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+    Write-Log $logMsg
     exit 0
 }
 
@@ -291,7 +308,7 @@ if ($isBreakActive) {
 # ACCIDENTAL SLEEP DETECTED: 30-SECOND WARNING BEEP COUNTDOWN
 # -----------------------------------------------------------------
 $logMsg = "[$timestamp] ACCIDENTAL SLEEP: 30 mins idle reached without break signal. Starting warning beeps..."
-Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+Write-Log $logMsg
 
 $aborted = $false
 $beepCycles = 30 # 30 half-second tones = 30 seconds of continuous alarm
@@ -325,13 +342,13 @@ for ($i = 0; $i -lt $beepCycles; $i++) {
 
 if ($aborted) {
     $logMsg = "[$timestamp] SHUTDOWN CANCELLED: Activity detected during warning beeps. PC stays awake."
-    Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+    Write-Log $logMsg
     try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
     exit 0
 }
 
 # Warning beeps expired with zero input -> Clean forced shutdown
 $logMsg = "[$timestamp] SHUTTING DOWN: Warning beeps expired without response. PC protecting battery & SSD."
-Add-Content -Path $logFile -Value $logMsg -ErrorAction SilentlyContinue
+Write-Log $logMsg
 
 shutdown.exe /s /f /t 0

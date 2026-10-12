@@ -27,6 +27,8 @@
   <a href="#-quick-installation">Quick Installation</a> •
   <a href="#-usage">Usage</a> •
   <a href="#-custom-desktop-icon">Desktop Icon</a> •
+  <a href="#-boot-beep--log-files">Boot Beep & Logs</a> •
+  <a href="#-verifying-the-install">Verify</a> •
   <a href="#-frequently-asked-questions">FAQ</a> •
   <a href="#-uninstallation">Uninstallation</a>
 </p>
@@ -75,6 +77,7 @@ graph TD
 - **⏱️ Timed Breaks That End Themselves**: Press **`Ctrl + Alt + B`** (or double-click the icon) and a dialog asks how long your break lasts — pick **15 / 30 / 40 / 60 min** or type any custom value. Auto-shutdown stays paused for exactly that long, then **re-arms automatically**. You never have to click again to turn it off.
 - **🔁 Boot-Session Aware Breaks**: Every break is stamped with the current OS boot session. **Restarting or shutting down the PC cancels the break** (a break can't survive a reboot you didn't plan), while **sleep and hibernate preserve it**, since those keep the same boot session.
 - **🛡️ Accidental Sleep Defense**: If you truly fall asleep with no break active, NightWatch executes a clean forced shutdown (`shutdown /s /f /t 0`) to protect your battery and SSD.
+- **🔇 Boot Beep Suppression**: Forced shutdowns normally set the "dirty boot" flag, so the next boot plays a single beep and shows the recovery menu. The installer sets `bcdedit /set {default} bootstatuspolicy IgnoreAllFailures` so this never happens — for any shutdown, not just ours.
 - **🔒 No Desktop Writes**: All break state lives in `C:\ProgramData\NightWatch\break_state.json`, so the sentinel never modifies Desktop files and cannot trigger icon refresh or flicker.
 - **🔋 Full Battery & AC Support**: Configured to run whether on laptop battery or plugged into wall power.
 - **⚙️ Purely Administrative & 100% Silent**: Runs elevated in the background via `SilentRunner.vbs` with zero console pop-ups, zero focus stealing, and zero desktop flickering.
@@ -97,6 +100,9 @@ NightWatch/
 ├── Install-StudySafetySystem.ps1 # Automated installer (configures Task Scheduler & custom icon)
 ├── Reinstall.bat               # 1-click self-elevating reinstaller
 ├── Uninstall-StudySafetySystem.ps1 # One-click removal script
+├── Tests/                      # PowerShell verifiers for install + detector logic
+│   ├── Test-Phase3-Install.ps1     # Verifies scheduled task, shortcut, ACL, bcdedit, etc.
+│   └── Test-Detector-Logic.ps1     # Expiry / Reboot / Valid break-clearing branches
 ├── LICENSE                     # Official Apache 2.0 License
 └── README.md                   # Documentation
 ```
@@ -137,8 +143,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 The installer will automatically:
 - Enable Windows Deep Hibernation (`powercfg /hibernate on`).
+- Suppress the dirty-boot beep with `bcdedit /set {default} bootstatuspolicy IgnoreAllFailures` so forced shutdowns never trigger a beep at next boot.
 - Create your **Study Break** Desktop icon with the custom 3D icon and `Ctrl + Alt + B` hotkey.
 - Register the 30-minute idle detector in Windows Task Scheduler with full battery support and 100% silent execution.
+- Grant `BUILTIN\Users` full control on `C:\ProgramData\NightWatch` so manual (non-admin) runs of the detector can write its log.
 
 ---
 
@@ -231,6 +239,44 @@ icon refresh or flicker.
 
 ---
 
+## 🔇 Boot Beep & Log Files
+
+### Why was there a beep on every boot?
+
+A forced shutdown (`shutdown /s /f /t 0`) sets the dirty-shutdown flag in the
+Boot Configuration Data. At the next boot, `wininit.exe` sees that flag and
+plays a short beep while it offers the recovery menu. The recovery screen
+itself is suppressed, but the beep is what the user notices.
+
+The installer now runs:
+
+```powershell
+bcdedit /set {default} bootstatuspolicy IgnoreAllFailures
+```
+
+This tells Windows to skip the dirty-boot recovery report entirely, regardless
+of how the previous session ended. It covers any future unexpected shutdown
+(power loss, BSOD, etc.) too — not just NightWatch's own. You can re-verify
+the setting at any time with `bcdedit /enum {default}`.
+
+### Where does the detector write its log?
+
+The sentinel writes to `C:\ProgramData\NightWatch\mistake_detector.log`. This
+is an admin-protected location, so the installer grants `BUILTIN\Users` full
+control on the directory and the existing log file, letting non-admin
+processes append to it as well.
+
+If a run still cannot write to the primary log (for example, the user is
+running the detector by hand from a context that does not have the relaxed
+ACL yet), the new `Write-Log` helper falls back to
+`%TEMP%\NightWatch.log` and only surfaces the line to the console if both
+paths fail. A warning is never silently lost.
+
+The PowerShell verifiers under `Tests/` use this fallback, so they work
+whether you run them as Administrator or as a normal user.
+
+---
+
 ## ⚙️ Customization
 
 Want to change the idle duration (e.g. to 20 or 45 minutes)?
@@ -259,6 +305,9 @@ $targetIdleSeconds = 1800   # 30 minutes
 #### Q: Why Hibernate instead of Sleep?
 **A:** Standard Sleep continues drawing battery to keep RAM active (wasting 15%–30% overnight and keeping the laptop warm in a backpack). Hibernate dumps RAM state directly to your SSD and drops power consumption to **absolute zero**.
 
+#### Q: My PC beeps once at boot. Is that NightWatch?
+**A:** A forced shutdown sets the dirty-boot flag, and the next boot plays a short beep while `wininit.exe` offers the recovery menu. The installer suppresses this with `bcdedit /set {default} bootstatuspolicy IgnoreAllFailures`. After running (or re-running) `Install-StudySafetySystem.ps1` once as Administrator, the beep is gone for any future shutdown — not just the ones NightWatch triggers.
+
 #### Q: Will this close my unsaved files if I fall asleep?
 **A:** If you fall asleep without hitting the break button, it executes `shutdown /s /f /t 0` to preserve the hardware. We strongly recommend using browser session restore (Chrome/Edge $\rightarrow$ *"Continue where you left off"*) and Auto-Save in your text editors (VS Code, Word, etc.).
 
@@ -273,6 +322,30 @@ To cleanly remove the shortcut and scheduled task:
 ```powershell
 .\Uninstall-StudySafetySystem.ps1
 ```
+
+> The `bcdedit` boot-status-policy change is **not** reverted by uninstall. If
+> you want to restore the default behaviour, run
+> `bcdedit /deletevalue {default} bootstatuspolicy` from an elevated prompt.
+
+---
+
+## 🧪 Verifying the Install
+
+Two PowerShell verifiers under `Tests/` check that everything is wired up
+correctly. Both work in an unelevated PowerShell.
+
+```powershell
+# Confirms the scheduled task, shortcut, data dir, log writability,
+# hibernation setting, and the bcdedit boot-status policy.
+.\Tests\Test-Phase3-Install.ps1
+
+# Exercises the three break-clearing branches of the detector
+# (expiry, reboot, valid) by writing crafted state files.
+.\Tests\Test-Detector-Logic.ps1 -Case All
+```
+
+Each script prints `[PASS]` / `[FAIL]` per assertion and exits with the
+number of failures (0 = all good).
 
 ---
 
